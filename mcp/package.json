@@ -1,0 +1,16 @@
+{
+  "name": "spendsavvy-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.4",
+    "dotenv": "^17.2.1",
+    "spendsavvy": "file:..",
+    "uuid": "^11.1.0"
+  }
+}
