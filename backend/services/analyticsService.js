@@ -3,9 +3,11 @@ import { connectToPostgres } from '../config/db.js';
 export async function getSpendByCategory(userId, month, year) {
   const db = await connectToPostgres();
   const result = await db.query(
-    `SELECT category, SUM(amount) as total
+    `SELECT category, SUM(amount) as total, SUM(amount) as total_amount
      FROM expenses
-     WHERE user_id = $1 AND EXTRACT(MONTH FROM created_at) = $2 AND EXTRACT(YEAR FROM created_at) = $3
+     WHERE (user_id = $1 OR id IN (SELECT expense_id FROM expense_splits WHERE user_id = $1))
+       AND EXTRACT(MONTH FROM created_at) = $2 
+       AND EXTRACT(YEAR FROM created_at) = $3
      GROUP BY category`,
     [userId, month, year]
   );

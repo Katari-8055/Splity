@@ -19,8 +19,15 @@ export const ExpenseDataSchema = z.object({
 });
 
 export const ExpenseIntentSchema = z.object({
-  type: z.enum(['expense_split', 'analytics', 'friend_info', 'general_chat'])
-    .describe('Intent classification of the user message'),
+  type: z.enum([
+    'expense_split',
+    'analytics',
+    'friend_balances',
+    'friend_info',
+    'list_expenses',
+    'list_groups',
+    'general_chat'
+  ]).describe('Intent classification of the user message'),
   intent: z.string().describe('Short summary of what the user wants to do'),
   data: ExpenseDataSchema.optional().describe('Extracted expense details if type is expense_split'),
   needsConfirmation: z.boolean().default(false).describe('True if details need user confirmation before saving'),

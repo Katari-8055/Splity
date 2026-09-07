@@ -83,53 +83,79 @@ export async function createExpenseWithSplit(
   category,
   subcategory,
   description,
-  friendIds,
+  friendIds = [],
   splitType = 'equal',
   customSplits,
   groupId
 ) {
-  const db = await connectToPostgres();
+  const pool = await connectToPostgres();
+  const client = await pool.connect();
   const expenseId = uuidv4();
   
   try {
-    await db.query('BEGIN');
+    await client.query('BEGIN');
     
-    const expense = await addExpense({
-      id: expenseId,
+    const expenseQuery = `
+      INSERT INTO expenses (id, user_id, group_id, category, subcategory, amount, description, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING *`;
+    const expenseValues = [
+      expenseId,
       userId,
-      groupId: groupId || null,
+      groupId || null,
       category,
-      subcategory,
+      subcategory || null,
       amount,
-      description,
-    });
+      description || null,
+    ];
+    const expenseRes = await client.query(expenseQuery, expenseValues);
+    const expense = expenseRes.rows[0];
     
     let splits;
     if (splitType === 'equal') {
-      const totalPeople = friendIds.length + 1;
-      const splitAmount = amount / totalPeople;
+      const validFriendIds = friendIds.filter(fId => fId && fId !== userId);
+      const totalPeople = validFriendIds.length + 1;
+      const splitAmount = parseFloat((amount / totalPeople).toFixed(2));
       splits = [
         { userId, amount: splitAmount },
-        ...friendIds.map(fId => ({ userId: fId, amount: splitAmount }))
+        ...validFriendIds.map(fId => ({ userId: fId, amount: splitAmount }))
       ];
     } else {
-      splits = customSplits || [];
+      splits = customSplits || [{ userId, amount }];
     }
     
-    await splitExpense(expenseId, splits);
-    
-    for (const friendId of friendIds) {
-      await pushNotification(
-        friendId,
-        `You have been added to a ${category} expense of $${amount} by ${userId}`
+    for (const s of splits) {
+      // Ensure user exists before inserting to avoid foreign key errors on ad-hoc friends
+      await client.query(
+        `INSERT INTO users (id, name, email, role) 
+         VALUES ($1, $2, $3, 'user') 
+         ON CONFLICT (id) DO NOTHING`,
+        [s.userId, s.userName || s.userId, `${s.userId}@example.com`]
+      );
+
+      await client.query(
+        `INSERT INTO expense_splits (expense_id, user_id, amount) VALUES ($1, $2, $3)
+         ON CONFLICT (expense_id, user_id) DO UPDATE SET amount = EXCLUDED.amount`,
+        [expenseId, s.userId, s.amount]
       );
     }
     
-    await db.query('COMMIT');
+    await client.query('COMMIT');
+
+    for (const friendId of friendIds) {
+      if (friendId !== userId) {
+        pushNotification(
+          friendId,
+          `You have been added to a ${category} expense of $${amount} by ${userId}`
+        ).catch(() => {});
+      }
+    }
+    
     return { expense, splits };
   } catch (error) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 }
 

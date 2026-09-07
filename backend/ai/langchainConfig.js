@@ -7,11 +7,23 @@ import {
   SafetyDetectionSchema
 } from './schemas.js';
 
-const apiKey = process.env.GEMINI_API_KEY || '';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load env variables
+dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config();
+
+const apiKey = process.env.GEMINI_API_KEY || 'dummy_key_for_initialization';
 
 export const llm = new ChatGoogleGenerativeAI({
   apiKey,
-  modelName: 'gemini-2.5-flash',
+  modelName: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
   temperature: 0.2,
 });
 
@@ -24,14 +36,19 @@ User Name: {userName}
 Available Friends: {friendsList}
 
 Intent Categories:
-- EXPENSE_SPLIT: User wants to log or split an expense (e.g. "I paid $60 for dinner with John and Alice", "John 30%, Mary 25%, rest on me")
-- ANALYTICS: User is asking for spending stats, trends, or totals (e.g. "Show my food expenses for this month")
-- FRIEND_INFO: User is querying friend list or balances
-- GENERAL_CHAT: General conversation or help questions
+- EXPENSE_SPLIT: User wants to log or split an expense (e.g. "I paid $60 for dinner with John and Alice", "split 50$ with all my friends", "split $100 with Rahul Bind")
+- ANALYTICS: User is asking for spending stats, category breakdown, monthly/weekly totals (e.g. "Show my food expenses", "How much did I spend this month?")
+- FRIEND_BALANCES: User is asking who owes what, debt summary, or net balance (e.g. "Who owes me money?", "What is my balance with Rahul?", "Do I owe anyone?")
+- FRIEND_INFO: User is querying friends list or details (e.g. "Show my friends", "Who is in my friend list?")
+- LIST_EXPENSES: User wants to see recent expenses or transaction history (e.g. "Show my recent expenses", "List my expenses")
+- LIST_GROUPS: User is asking about their expense groups (e.g. "What groups am I in?", "List my groups")
+- GENERAL_CHAT: General greetings, help, or conversation
 
 RULES FOR EXPENSE SPLITTING:
-- Include current user ({userName}) ONLY if explicitly mentioned (e.g. "me", "myself", "I").
-- If percentages like "John (30%), Mary (25%), rest on me" are mentioned, set splitType to 'percentage' and extract exact percentages.
+- When user says "all my friends", include all friends from {friendsList} in participants and friendIds.
+- Calculate exact split amounts per participant. If split is equal between user and friends, split amount = Total / (number of friends + (if user included ? 1 : 0)).
+- Set needsConfirmation to true when proposing an expense split so the user can review and confirm.
+- Provide a clear, friendly message in 'message' explaining the split details.
 - Infer appropriate Category (Food, Transport, Shopping, Bills, Entertainment, Other) and Subcategory.
 `),
   HumanMessagePromptTemplate.fromTemplate(`

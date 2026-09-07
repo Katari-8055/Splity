@@ -7,6 +7,18 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load env variables
+dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
+dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
+dotenv.config();
+
 import { v4 as uuidv4 } from 'uuid';
 
 import { addUser, getUser, getUserByEmail, getUserByPhone, searchAllUsers } from '../backend/services/userService.js';

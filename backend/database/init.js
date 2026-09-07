@@ -160,6 +160,13 @@ export async function initializeDatabase() {
       )
     `);
 
+    // Seed demo user for quick start & frontend demo mode
+    await db.query(`
+      INSERT INTO users (id, name, email, role)
+      VALUES ('demo-user-id', 'Demo User', 'demo@example.com', 'user')
+      ON CONFLICT (id) DO NOTHING
+    `);
+
     console.log('Database schema initialized successfully');
   } catch (error) {
     console.error('Error initializing database:', error);

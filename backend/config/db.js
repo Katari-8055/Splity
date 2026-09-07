@@ -10,17 +10,17 @@ const __dirname = path.dirname(__filename);
 
 // Load env variables
 dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config();
 
 // Disable WebSocket for HTTP Neon compatibility
 neonConfig.webSocketConstructor = undefined;
 
-const databaseUrl = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
-
 let pool = null;
 
 export async function connectToPostgres() {
   if (!pool) {
+    const databaseUrl = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
     if (!databaseUrl) {
       console.warn('Warning: DATABASE_URL or NEON_DATABASE_URL environment variable is missing');
     }
