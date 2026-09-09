@@ -11,8 +11,8 @@ export default function ChildAnalyticsPage() {
     async function init() {
       try {
         const list = await parentService.getChildren();
-        setChildrenList(list);
-        if (list.length > 0) {
+        setChildrenList(list || []);
+        if (list && list.length > 0) {
           setSelectedChildId(list[0].child_id);
         }
       } catch (err) {
@@ -38,19 +38,19 @@ export default function ChildAnalyticsPage() {
   }, [selectedChildId]);
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold text-white">Child Spending Analytics</h1>
-        <p className="text-gray-400 text-sm mt-1">Review category breakdown & transactions for monitored children</p>
+        <h1 className="text-xl font-bold text-slate-100 tracking-tight">Child Spending Analytics</h1>
+        <p className="text-xs text-slate-400 mt-0.5">Category breakdown and transactions for monitored accounts</p>
       </div>
 
       {childrenList.length > 0 && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex items-center space-x-3">
-          <label className="text-xs font-medium text-gray-300">Select Child:</label>
+        <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-4 flex items-center space-x-3">
+          <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Select Child</label>
           <select
             value={selectedChildId}
             onChange={(e) => setSelectedChildId(e.target.value)}
-            className="bg-gray-900 border border-gray-700 text-white text-xs rounded-lg px-3 py-1.5"
+            className="bg-[#0e131d] border border-[#1e2638] text-slate-100 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500"
           >
             {childrenList.map((c) => (
               <option key={c.child_id} value={c.child_id}>{c.child_name}</option>
@@ -60,23 +60,32 @@ export default function ChildAnalyticsPage() {
       )}
 
       {loading ? (
-        <p className="text-gray-400 text-sm">Loading analytics...</p>
+        <div className="py-12 text-center text-xs text-slate-500">Loading analytics data...</div>
       ) : !analytics ? (
-        <p className="text-gray-400 text-sm">No child analytics available.</p>
+        <div className="py-12 text-center text-xs text-slate-500">No analytics data available for this child.</div>
       ) : (
-        <div className="space-y-6">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-            <h2 className="text-md font-semibold text-white">Total Child Spending</h2>
-            <p className="text-3xl font-bold text-purple-400 mt-2">${analytics.totalSpending.toFixed(2)}</p>
+        <div className="space-y-4">
+          {/* Total Spending Card */}
+          <div className="p-5 bg-[#121722] border border-[#1e2638] rounded-xl shadow-sm">
+            <span className="text-[11px] uppercase font-semibold tracking-wider text-slate-400 block">Total Spending</span>
+            <span className="text-3xl font-bold text-slate-100 font-mono mt-1 block">
+              ${parseFloat(analytics.totalSpending || 0).toFixed(2)}
+            </span>
           </div>
 
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-            <h2 className="text-md font-semibold text-white mb-4">Category Breakdown</h2>
-            <div className="space-y-3">
+          {/* Category Breakdown */}
+          <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-5 shadow-sm">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Category Breakdown</h2>
+            <div className="space-y-2">
               {(analytics.categoryBreakdown || []).map((cat, idx) => (
-                <div key={idx} className="flex justify-between text-sm text-gray-300 p-2 bg-gray-700/40 rounded">
-                  <span>{cat.category}</span>
-                  <span className="font-bold">${parseFloat(cat.total_amount).toFixed(2)}</span>
+                <div
+                  key={idx}
+                  className="flex justify-between items-center p-3 bg-[#0e131d] border border-[#1e2638] rounded-lg hover:border-[#2a364f] transition-colors"
+                >
+                  <span className="text-xs font-medium text-slate-300">{cat.category}</span>
+                  <span className="text-xs font-bold text-emerald-400 font-mono">
+                    ${parseFloat(cat.total_amount).toFixed(2)}
+                  </span>
                 </div>
               ))}
             </div>

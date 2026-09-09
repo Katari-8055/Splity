@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { groupService } from '../services/api';
 
 export default function GroupDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [group, setGroup] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     loadGroupData();
@@ -16,12 +18,14 @@ export default function GroupDetailPage() {
 
   async function loadGroupData() {
     try {
-      const g = await groupService.getGroupDetails(id);
-      const e = await groupService.getGroupExpenses(id);
-      const m = await groupService.getGroupMessages(id);
+      const [g, e, m] = await Promise.all([
+        groupService.getGroupDetails(id),
+        groupService.getGroupExpenses(id),
+        groupService.getGroupMessages(id)
+      ]);
       setGroup(g);
-      setExpenses(e);
-      setMessages(m);
+      setExpenses(e || []);
+      setMessages(m || []);
     } catch (err) {
       console.error('Error loading group detail:', err);
     } finally {
@@ -33,58 +37,108 @@ export default function GroupDetailPage() {
     e.preventDefault();
     if (!newMessage.trim()) return;
 
+    setIsSending(true);
     try {
       await groupService.postGroupMessage(id, newMessage);
       setNewMessage('');
       const updatedMessages = await groupService.getGroupMessages(id);
-      setMessages(updatedMessages);
+      setMessages(updatedMessages || []);
     } catch (err) {
       console.error('Failed to post message:', err);
+    } finally {
+      setIsSending(false);
     }
   }
 
   if (loading) {
-    return <div className="text-gray-400 text-sm">Loading group...</div>;
+    return (
+      <div className="flex items-center justify-center py-20 text-xs text-slate-500">
+        Loading group workspace...
+      </div>
+    );
   }
 
   if (!group) {
-    return <div className="text-red-400 text-sm">Group not found.</div>;
+    return (
+      <div className="p-6 bg-[#121722] border border-[#1e2638] rounded-xl text-center space-y-3">
+        <p className="text-sm font-semibold text-rose-400">Group not found or you are not a member.</p>
+        <button
+          onClick={() => navigate('/groups')}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold"
+        >
+          Back to Groups
+        </button>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold text-white">{group.name}</h1>
-        <p className="text-gray-400 text-sm mt-1">Group Details & Member Activity</p>
+    <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center space-x-2">
+            <h1 className="text-xl font-bold text-slate-100 tracking-tight">{group.name}</h1>
+            <span className="text-[10px] uppercase font-bold tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded">
+              Group
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">{group.description || 'Shared expense group'}</p>
+        </div>
+        <button
+          onClick={() => navigate('/groups')}
+          className="text-xs text-slate-400 hover:text-slate-200 px-3 py-1.5 rounded-lg border border-[#1e2638] bg-[#121722] hover:bg-[#182030] transition-colors"
+        >
+          ← Back
+        </button>
       </div>
 
-      {/* Members overview */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
-        <h2 className="text-md font-semibold text-white mb-3">Members ({(group.members || []).length})</h2>
+      {/* Members Overview */}
+      <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-4 shadow-sm">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">
+          Members ({(group.members || []).length})
+        </h2>
         <div className="flex flex-wrap gap-2">
           {(group.members || []).map((m) => (
-            <span key={m.id} className="px-3 py-1 bg-gray-700 text-gray-200 text-xs rounded-full border border-gray-600">
-              {m.name || m.email}
-            </span>
+            <div
+              key={m.id || m.email}
+              className="flex items-center space-x-2 px-2.5 py-1.5 bg-[#0e131d] border border-[#1e2638] rounded-lg text-xs text-slate-200"
+            >
+              <div className="w-5 h-5 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-[10px] font-bold text-indigo-400">
+                {(m.name || m.email || 'U').charAt(0).toUpperCase()}
+              </div>
+              <span className="font-medium text-xs">{m.name || m.email}</span>
+            </div>
           ))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Expenses List */}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-4">
-          <h2 className="text-md font-semibold text-white">Group Expenses</h2>
+        <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-5 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Group Expenses</h2>
+            <span className="text-[11px] text-slate-500">{expenses.length} records</span>
+          </div>
+
           {expenses.length === 0 ? (
-            <p className="text-gray-400 text-sm">No expenses logged in this group yet.</p>
+            <div className="py-12 text-center text-xs text-slate-500">
+              No expenses recorded in this group yet.
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
               {expenses.map((e) => (
-                <div key={e.id} className="p-3 bg-gray-700/50 rounded-lg flex items-center justify-between">
+                <div
+                  key={e.id}
+                  className="p-3 bg-[#0e131d] border border-[#1e2638] rounded-lg flex items-center justify-between hover:border-[#2a364f] transition-colors"
+                >
                   <div>
-                    <p className="text-sm font-medium text-white">{e.description || e.category}</p>
-                    <p className="text-xs text-gray-400">Paid by: {e.paid_by_name || 'Member'}</p>
+                    <p className="text-xs font-semibold text-slate-200">{e.description || e.category}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Paid by <span className="text-slate-400 font-medium">{e.paid_by_name || 'Member'}</span> • {new Date(e.created_at || Date.now()).toLocaleDateString()}
+                    </p>
                   </div>
-                  <p className="text-sm font-bold text-green-400">${parseFloat(e.amount).toFixed(2)}</p>
+                  <p className="text-xs font-bold text-emerald-400 font-mono">${parseFloat(e.amount).toFixed(2)}</p>
                 </div>
               ))}
             </div>
@@ -92,33 +146,46 @@ export default function GroupDetailPage() {
         </div>
 
         {/* Group Chat */}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 flex flex-col h-[400px]">
-          <h2 className="text-md font-semibold text-white mb-3">Group Chat</h2>
-          <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-thin">
+        <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-5 flex flex-col h-[450px] shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Group Activity Chat</h2>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-2 pr-2">
             {messages.length === 0 ? (
-              <p className="text-gray-400 text-sm">No messages yet. Say hello!</p>
+              <div className="h-full flex items-center justify-center text-xs text-slate-500">
+                No group messages yet.
+              </div>
             ) : (
               messages.map((m) => (
-                <div key={m.id} className="p-2 bg-gray-700/40 rounded text-xs">
-                  <span className="font-bold text-blue-400">{m.user_name}: </span>
-                  <span className="text-gray-200">{m.message}</span>
+                <div key={m.id} className="p-2.5 bg-[#0e131d] border border-[#1e2638] rounded-lg text-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-indigo-400">{m.user_name || 'Member'}</span>
+                    <span className="text-[10px] text-slate-500">
+                      {m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed">{m.message}</p>
                 </div>
               ))
             )}
           </div>
-          <form onSubmit={handleSendMessage} className="mt-3 flex space-x-2">
+
+          <form onSubmit={handleSendMessage} className="mt-3 flex space-x-2 pt-2 border-t border-[#1e2638]">
             <input
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message..."
-              className="flex-1 px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-xs text-white"
+              placeholder="Post an update or discussion..."
+              className="flex-1 px-3 py-2 bg-[#0e131d] border border-[#1e2638] rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
             />
             <button
               type="submit"
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium"
+              disabled={isSending || !newMessage.trim()}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-40"
             >
-              Send
+              {isSending ? '...' : 'Send'}
             </button>
           </form>
         </div>

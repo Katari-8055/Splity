@@ -13,6 +13,7 @@ const router = Router();
 router.post('/create', optionalAuth, createExpense);
 router.post('/save', optionalAuth, createExpense);
 router.get('/history', optionalAuth, getExpenseHistory);
+router.get('/balances', optionalAuth, getBalancesController);
 router.post('/ai-split', optionalAuth, aiSplitExpense);
 router.post('/:id/pay', optionalAuth, payExpenseController);
 

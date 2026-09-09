@@ -1,73 +1,79 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 
-export default function QuickStats({ balanceData }) {
-  const { youOwe = 0, owedToYou = 0, netBalance = 0 } = balanceData || {};
+export default function QuickStats({ balanceData, totalSpent = 0, groupCount = 0 }) {
+  const { totalYouOwe = 0, totalYouAreOwed = 0, netBalance = 0 } = balanceData || {};
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-sm"
-      >
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 1. Net Balance */}
+      <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-4 transition hover:border-[#2e3b56]">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-400">Total You Owe</p>
-            <h3 className="text-2xl font-bold text-red-400 mt-1">
-              ${youOwe.toFixed(2)}
-            </h3>
-          </div>
-          <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center text-red-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </div>
+          <span className="text-xs font-medium text-slate-400">Net Balance</span>
+          <span
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              netBalance >= 0
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+            }`}
+          >
+            {netBalance >= 0 ? '+Credit' : '-Owed'}
+          </span>
         </div>
-      </motion.div>
+        <div className="mt-2 flex items-baseline space-x-1">
+          <span className={`text-2xl font-bold tracking-tight ${netBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            ${Math.abs(netBalance).toFixed(2)}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1">Overall balance with all friends</p>
+      </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
-        className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-sm"
-      >
+      {/* 2. Total You Are Owed */}
+      <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-4 transition hover:border-[#2e3b56]">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-400">Owed to You</p>
-            <h3 className="text-2xl font-bold text-green-400 mt-1">
-              ${owedToYou.toFixed(2)}
-            </h3>
-          </div>
-          <div className="w-12 h-12 bg-green-500/10 rounded-full flex items-center justify-center text-green-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
-            </svg>
+          <span className="text-xs font-medium text-slate-400">You Are Owed</span>
+          <div className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 text-xs">
+            ↓
           </div>
         </div>
-      </motion.div>
+        <div className="mt-2">
+          <span className="text-2xl font-bold text-slate-100 tracking-tight">
+            ${totalYouAreOwed.toFixed(2)}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1">Money to be received</p>
+      </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.2 }}
-        className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-sm"
-      >
+      {/* 3. Total You Owe */}
+      <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-4 transition hover:border-[#2e3b56]">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-400">Net Balance</p>
-            <h3 className={`text-2xl font-bold mt-1 ${netBalance >= 0 ? 'text-blue-400' : 'text-orange-400'}`}>
-              ${Math.abs(netBalance).toFixed(2)} {netBalance >= 0 ? '(Credit)' : '(Owed)'}
-            </h3>
-          </div>
-          <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          <span className="text-xs font-medium text-slate-400">You Owe</span>
+          <div className="w-6 h-6 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400 text-xs">
+            ↑
           </div>
         </div>
-      </motion.div>
+        <div className="mt-2">
+          <span className="text-2xl font-bold text-slate-100 tracking-tight">
+            ${totalYouOwe.toFixed(2)}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1">Debts to settle</p>
+      </div>
+
+      {/* 4. Total Monthly Spend */}
+      <div className="bg-[#121722] border border-[#1e2638] rounded-xl p-4 transition hover:border-[#2e3b56]">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-slate-400">Total Spent</span>
+          <div className="w-6 h-6 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs">
+            💳
+          </div>
+        </div>
+        <div className="mt-2">
+          <span className="text-2xl font-bold text-slate-100 tracking-tight">
+            ${totalSpent.toFixed(2)}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1">{groupCount} active group(s)</p>
+      </div>
     </div>
   );
 }

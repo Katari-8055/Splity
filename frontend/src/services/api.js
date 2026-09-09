@@ -56,6 +56,7 @@ export const expenseService = {
     const query = new URLSearchParams(filters).toString();
     return fetchAPI(`/expenses/history?${query}`);
   },
+  getBalances: () => fetchAPI('/expenses/balances'),
   createExpense: (data) => fetchAPI('/expenses/create', { method: 'POST', body: JSON.stringify(data) }),
   aiSplit: (description, amount) => fetchAPI('/expenses/ai-split', { method: 'POST', body: JSON.stringify({ description, amount }) }),
   payExpense: (id, amount) => fetchAPI(`/expenses/${id}/pay`, { method: 'POST', body: JSON.stringify({ amount }) }),
