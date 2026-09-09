@@ -121,25 +121,27 @@ export async function getTopSpendingCategories(userId, timeframe = 'this_month',
 export async function getDashboardOverview(userId) {
   const db = await connectToPostgres();
   
-  const totalSpentRes = await db.query(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = $1`,
-    [userId]
-  );
-  const totalSpent = parseFloat(totalSpentRes.rows[0].total);
+  // Execute all 3 dashboard queries in parallel
+  const [totalSpentRes, groupCountRes, recentExpensesRes] = await Promise.all([
+    db.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = $1`,
+      [userId]
+    ),
+    db.query(
+      `SELECT COUNT(DISTINCT group_id) as count FROM group_members WHERE user_id = $1`,
+      [userId]
+    ),
+    db.query(
+      `SELECT e.*, COALESCE(u.name, 'User') as paid_by_name FROM expenses e
+       LEFT JOIN users u ON e.user_id = u.id
+       WHERE e.user_id = $1 OR e.id IN (SELECT expense_id FROM expense_splits WHERE user_id = $1)
+       ORDER BY e.created_at DESC LIMIT 5`,
+      [userId]
+    )
+  ]);
 
-  const groupCountRes = await db.query(
-    `SELECT COUNT(*) as count FROM group_members WHERE user_id = $1`,
-    [userId]
-  );
-  const groupCount = parseInt(groupCountRes.rows[0].count);
-
-  const recentExpensesRes = await db.query(
-    `SELECT e.*, u.name as paid_by_name FROM expenses e
-     JOIN users u ON e.user_id = u.id
-     WHERE e.user_id = $1 OR e.id IN (SELECT expense_id FROM expense_splits WHERE user_id = $1)
-     ORDER BY e.created_at DESC LIMIT 5`,
-    [userId]
-  );
+  const totalSpent = parseFloat(totalSpentRes.rows[0]?.total || 0);
+  const groupCount = parseInt(groupCountRes.rows[0]?.count || 0);
 
   return {
     totalSpent,

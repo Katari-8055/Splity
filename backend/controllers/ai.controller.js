@@ -37,23 +37,21 @@ export async function parseChat(req, res, next) {
     };
 
     if (userId) {
-      try {
-        const user = await getUser(userId);
-        if (user) userContext.userName = user.name;
-      } catch (e) {
-        console.warn('Could not fetch user details:', e.message);
-      }
+      // Fetch user profile, friends, and groups in parallel for maximum speed
+      const [userRes, friendsRes, groupsRes] = await Promise.allSettled([
+        getUser(userId),
+        listFriends(userId),
+        listGroups(userId)
+      ]);
 
-      try {
-        userContext.friends = await listFriends(userId);
-      } catch (e) {
-        console.warn('Could not fetch friends list:', e.message);
+      if (userRes.status === 'fulfilled' && userRes.value) {
+        userContext.userName = userRes.value.name || 'User';
       }
-
-      try {
-        userContext.groups = await listGroups(userId);
-      } catch (e) {
-        console.warn('Could not fetch groups list:', e.message);
+      if (friendsRes.status === 'fulfilled' && friendsRes.value) {
+        userContext.friends = friendsRes.value || [];
+      }
+      if (groupsRes.status === 'fulfilled' && groupsRes.value) {
+        userContext.groups = groupsRes.value || [];
       }
     }
 

@@ -11,11 +11,11 @@ const aiAssistant = new GeminiExpenseAssistant();
 
 export async function createExpense(req, res, next) {
   try {
-    const userId = req.user?.userId || req.body.userId;
+    const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
     const { amount, category, subcategory, description, friendIds, splitType, customSplits, groupId } = req.body;
 
-    if (!userId || !amount || !category) {
-      return res.status(400).json({ error: 'UserId, amount, and category are required' });
+    if (!amount || !category) {
+      return res.status(400).json({ error: 'Amount and category are required' });
     }
 
     if (friendIds && friendIds.length > 0) {
@@ -49,10 +49,7 @@ export async function createExpense(req, res, next) {
 
 export async function getExpenseHistory(req, res, next) {
   try {
-    const userId = req.user?.userId || req.query.userId;
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
-    }
+    const userId = req.user?.userId || req.headers['x-user-id'] || req.query.userId || 'demo-user-id';
 
     const filters = {
       category: req.query.category,
@@ -88,11 +85,11 @@ export async function aiSplitExpense(req, res, next) {
 export async function payExpenseController(req, res, next) {
   try {
     const { id } = req.params;
-    const userId = req.user?.userId || req.body.userId;
+    const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
     const { amount } = req.body;
 
-    if (!userId || !amount) {
-      return res.status(400).json({ error: 'User ID and amount are required' });
+    if (!amount) {
+      return res.status(400).json({ error: 'Amount is required' });
     }
 
     const payment = await payExpense(id, userId, parseFloat(amount));
@@ -104,10 +101,7 @@ export async function payExpenseController(req, res, next) {
 
 export async function getBalancesController(req, res, next) {
   try {
-    const userId = req.user?.userId || req.query.userId;
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
-    }
+    const userId = req.user?.userId || req.headers['x-user-id'] || req.query.userId || 'demo-user-id';
     const balances = await getUserBalances(userId);
     res.json(balances);
   } catch (error) {

@@ -52,8 +52,21 @@ export class GeminiExpenseAssistant {
 
     // Helper to match group by name or id
     const resolveGroup = async (groupNameOrId) => {
-      if (!groupNameOrId) return null;
-      // Search in user's groups first
+      if (!groupNameOrId) {
+        // Check if message contains a UUID
+        const uuidMatch = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        if (uuidMatch) {
+          const direct = await getGroup(uuidMatch[0]);
+          if (direct) return direct;
+        }
+        return null;
+      }
+
+      // 1. Direct ID/Name DB lookup
+      const direct = await getGroup(groupNameOrId);
+      if (direct) return direct;
+
+      // 2. Search in user's groups
       let matched = userGroups.find(g => 
         g.id === groupNameOrId || 
         g.name?.toLowerCase().includes(groupNameOrId.toLowerCase()) ||
@@ -61,7 +74,7 @@ export class GeminiExpenseAssistant {
       );
       if (matched) return matched;
 
-      // Try DB lookup
+      // 3. Try fresh DB lookup
       const freshGroups = await listGroups(userId);
       matched = freshGroups.find(g => 
         g.id === groupNameOrId || 
@@ -206,9 +219,12 @@ export class GeminiExpenseAssistant {
           };
         }
 
-        const members = await getGroupMembers(group.id);
-        const expenses = await getGroupExpenses(group.id);
-        const messages = await getGroupMessages(group.id);
+        // Fetch members, expenses, and messages in parallel
+        const [members, expenses, messages] = await Promise.all([
+          getGroupMembers(group.id),
+          getGroupExpenses(group.id),
+          getGroupMessages(group.id)
+        ]);
 
         const totalSpent = expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
 
@@ -254,15 +270,11 @@ export class GeminiExpenseAssistant {
         }
 
         let msg = `👥 **Your Active Groups (${groups.length}):**\n\n`;
-        const enrichedGroups = await Promise.all(
-          groups.map(async (g, idx) => {
-            const members = await getGroupMembers(g.id);
-            const expenses = await getGroupExpenses(g.id);
-            const total = expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-            msg += `${idx + 1}. **${g.name}** — ${members.length} members | $${total.toFixed(2)} spent\n`;
-            return { ...g, memberCount: members.length, totalSpent: total };
-          })
-        );
+        groups.forEach((g, idx) => {
+          const memberCount = parseInt(g.member_count || 1);
+          const totalSpent = parseFloat(g.total_spent || 0);
+          msg += `${idx + 1}. **${g.name}** — ${memberCount} members | $${totalSpent.toFixed(2)} spent\n`;
+        });
 
         msg += `\n💬 *Tip: Say "Show details of ${groups[0].name}" or "Add an expense to ${groups[0].name}"*`;
 
@@ -270,7 +282,7 @@ export class GeminiExpenseAssistant {
           type: 'list_groups',
           intent: 'List of groups',
           message: msg,
-          data: enrichedGroups
+          data: groups
         };
       }
 
@@ -489,8 +501,10 @@ export class GeminiExpenseAssistant {
         const now = new Date();
         const currentMonth = now.getMonth() + 1;
         const currentYear = now.getFullYear();
-        const categorySpend = await getSpendByCategory(userId, currentMonth, currentYear);
-        const monthlySummary = await getMonthlySummary(userId);
+        const [categorySpend, monthlySummary] = await Promise.all([
+          getSpendByCategory(userId, currentMonth, currentYear),
+          getMonthlySummary(userId)
+        ]);
 
         let totalMonthSpend = 0;
         if (categorySpend && categorySpend.length > 0) {

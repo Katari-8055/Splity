@@ -36,20 +36,23 @@ export async function splitExpense(expenseId, splits) {
 export async function listExpenses(userId, filters = {}) {
   const db = await connectToPostgres();
   let query = `
-    SELECT e.*, u.name as paid_by_name,
-      (SELECT json_agg(json_build_object('userId', es.user_id, 'amount', es.amount, 'userName', u2.name))
+    SELECT e.*, COALESCE(u.name, 'User') as paid_by_name,
+      (SELECT json_agg(json_build_object('userId', es.user_id, 'amount', es.amount, 'userName', COALESCE(u2.name, 'Member')))
        FROM expense_splits es
-       JOIN users u2 ON es.user_id = u2.id
+       LEFT JOIN users u2 ON es.user_id = u2.id
        WHERE es.expense_id = e.id) as splits
     FROM expenses e
-    JOIN users u ON e.user_id = u.id
-    WHERE e.user_id = $1 OR e.id IN (SELECT expense_id FROM expense_splits WHERE user_id = $1)
+    LEFT JOIN users u ON e.user_id = u.id
+    WHERE (e.user_id = $1 
+       OR e.id IN (SELECT expense_id FROM expense_splits WHERE user_id = $1)
+       OR e.group_id IN (SELECT group_id FROM group_members WHERE user_id = $1)
+       OR e.group_id IN (SELECT id FROM groups WHERE created_by = $1))
   `;
   const values = [userId];
 
-  if (filters.category) {
-    query += ` AND e.category = $${values.length + 1}`;
-    values.push(filters.category);
+  if (filters.category && filters.category.trim() !== '') {
+    query += ` AND e.category ILIKE $${values.length + 1}`;
+    values.push(filters.category.trim());
   }
   if (filters.startDate && filters.endDate) {
     query += ` AND e.created_at BETWEEN $${values.length + 1} AND $${values.length + 2}`;
@@ -63,13 +66,13 @@ export async function listExpenses(userId, filters = {}) {
 export async function getGroupExpenses(groupId) {
   const db = await connectToPostgres();
   const query = `
-    SELECT e.*, u.name as paid_by_name,
-      (SELECT json_agg(json_build_object('userId', es.user_id, 'amount', es.amount, 'userName', u2.name))
+    SELECT e.*, COALESCE(u.name, 'Member') as paid_by_name,
+      (SELECT json_agg(json_build_object('userId', es.user_id, 'amount', es.amount, 'userName', COALESCE(u2.name, 'Member')))
        FROM expense_splits es
-       JOIN users u2 ON es.user_id = u2.id
+       LEFT JOIN users u2 ON es.user_id = u2.id
        WHERE es.expense_id = e.id) as splits
     FROM expenses e
-    JOIN users u ON e.user_id = u.id
+    LEFT JOIN users u ON e.user_id = u.id
     WHERE e.group_id = $1
     ORDER BY e.created_at DESC
   `;
@@ -94,6 +97,14 @@ export async function createExpenseWithSplit(
   
   try {
     await client.query('BEGIN');
+
+    // Ensure paying user exists
+    await client.query(
+      `INSERT INTO users (id, name, email, role) 
+       VALUES ($1, $2, $3, 'user') 
+       ON CONFLICT (id) DO NOTHING`,
+      [userId, 'User', `${userId}@example.com`]
+    );
     
     const expenseQuery = `
       INSERT INTO expenses (id, user_id, group_id, category, subcategory, amount, description, created_at)
@@ -124,12 +135,11 @@ export async function createExpenseWithSplit(
     }
     
     for (const s of splits) {
-      // Ensure user exists before inserting to avoid foreign key errors on ad-hoc friends
       await client.query(
         `INSERT INTO users (id, name, email, role) 
          VALUES ($1, $2, $3, 'user') 
          ON CONFLICT (id) DO NOTHING`,
-        [s.userId, s.userName || s.userId, `${s.userId}@example.com`]
+        [s.userId, s.userName || `User-${s.userId.substring(0, 6)}`, `${s.userId}@example.com`]
       );
 
       await client.query(
@@ -182,21 +192,39 @@ export async function getFriendBalance(userId, friendId) {
 
 export async function getUserBalances(userId) {
   const db = await connectToPostgres();
-  // Get all friends and calculate balance for each
-  const friendsResult = await db.query(
-    `SELECT DISTINCT f.friend_id as id, u.name, u.email
-     FROM friends f
-     JOIN users u ON f.friend_id = u.id
-     WHERE f.user_id = $1`,
+  
+  // Find all related people: direct friends, group co-members, or anyone who split expenses with user
+  const relatedPeopleResult = await db.query(
+    `SELECT DISTINCT u.id, u.name, u.email
+     FROM users u
+     WHERE u.id != $1 AND (
+       u.id IN (SELECT friend_id FROM friends WHERE user_id = $1) OR
+       u.id IN (SELECT user_id FROM friends WHERE friend_id = $1) OR
+       u.id IN (
+         SELECT gm2.user_id FROM group_members gm1
+         JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+         WHERE gm1.user_id = $1 AND gm2.user_id != $1
+       ) OR
+       u.id IN (
+         SELECT es.user_id FROM expenses e
+         JOIN expense_splits es ON e.id = es.expense_id
+         WHERE e.user_id = $1
+       ) OR
+       u.id IN (
+         SELECT e.user_id FROM expenses e
+         JOIN expense_splits es ON e.id = es.expense_id
+         WHERE es.user_id = $1
+       )
+     )`,
     [userId]
   );
   
   const balances = await Promise.all(
-    friendsResult.rows.map(async (friend) => {
+    relatedPeopleResult.rows.map(async (friend) => {
       const balance = await getFriendBalance(userId, friend.id);
       return {
         friendId: friend.id,
-        friendName: friend.name,
+        friendName: friend.name || 'Friend',
         friendEmail: friend.email,
         balance
       };
@@ -216,7 +244,6 @@ export async function getUserBalances(userId) {
 
 export async function payExpense(expenseId, userId, amountPaid) {
   const db = await connectToPostgres();
-  // Update or record payment in expense_splits or adjust balance
   const result = await db.query(
     `UPDATE expense_splits SET amount = GREATEST(0, amount - $1)
      WHERE expense_id = $2 AND user_id = $3 RETURNING *`,
