@@ -1,6 +1,5 @@
 import pkg from 'pg';
 const { Pool } = pkg;
-import { neonConfig } from '@neondatabase/serverless';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,20 +12,32 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config();
 
-// Disable WebSocket for HTTP Neon compatibility
-neonConfig.webSocketConstructor = undefined;
-
 let pool = null;
 
 export async function connectToPostgres() {
   if (!pool) {
-    const databaseUrl = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
+    const databaseUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL || process.env.NEON_DATABASE_URL;
     if (!databaseUrl) {
-      console.warn('Warning: DATABASE_URL or NEON_DATABASE_URL environment variable is missing');
+      console.warn('Warning: DATABASE_URL environment variable is missing');
     }
+
+    const isCloudDb = databaseUrl && (
+      databaseUrl.includes('supabase.com') || 
+      databaseUrl.includes('supabase.co') || 
+      databaseUrl.includes('neon.tech') ||
+      databaseUrl.includes('sslmode=require')
+    );
+
     pool = new Pool({
       connectionString: databaseUrl || 'postgresql://postgres:postgres@localhost:5432/expense_splitter',
-      ssl: databaseUrl && databaseUrl.includes('neon.tech') ? { rejectUnauthorized: false } : false
+      ssl: isCloudDb ? { rejectUnauthorized: false } : false,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+    });
+
+    pool.on('error', (err) => {
+      console.error('[PostgreSQL Pool Error]:', err.message);
     });
   }
   return pool;

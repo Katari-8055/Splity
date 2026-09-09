@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
-    console.log('Initializing Neon PostgreSQL database schema...');
+    console.log('Initializing Supabase PostgreSQL database schema...');
     await initializeDatabase();
     console.log('Database initialized successfully.');
 
