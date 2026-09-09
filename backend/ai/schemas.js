@@ -16,20 +16,44 @@ export const ExpenseDataSchema = z.object({
   participants: z.array(ParticipantSchema).default([]).describe('List of participants involved in split'),
   friendIds: z.array(z.string()).default([]).describe('IDs or names of friends involved'),
   groupId: z.string().optional().describe('ID of group if expense is assigned to a group'),
+  groupName: z.string().optional().describe('Name of group if expense is assigned to a group'),
+});
+
+export const GroupDataSchema = z.object({
+  groupName: z.string().optional().describe('Name of the group to create or query (e.g. Dargling Trip, Goa Trip)'),
+  groupId: z.string().optional().describe('ID of the group if known'),
+  memberNamesOrIds: z.array(z.string()).default([]).describe('Names or IDs of friends to include in the group'),
+  includeAllFriends: z.boolean().default(false).describe('True if user asked to include all friends / everyone'),
+  message: z.string().optional().describe('Message to post in group chat if applicable'),
+});
+
+export const FriendDataSchema = z.object({
+  name: z.string().optional().describe('Name of friend to add or query'),
+  email: z.string().optional().describe('Email of friend'),
+  phone: z.string().optional().describe('Phone number of friend'),
+  amount: z.number().optional().describe('Settlement amount if settling debt'),
 });
 
 export const ExpenseIntentSchema = z.object({
   type: z.enum([
-    'expense_split',
-    'analytics',
-    'friend_balances',
-    'friend_info',
-    'list_expenses',
+    'create_group',
+    'group_details',
     'list_groups',
+    'add_group_member',
+    'post_group_message',
+    'expense_split',
+    'add_friend',
+    'friend_info',
+    'friend_balances',
+    'settle_up',
+    'list_expenses',
+    'analytics',
     'general_chat'
   ]).describe('Intent classification of the user message'),
   intent: z.string().describe('Short summary of what the user wants to do'),
   data: ExpenseDataSchema.optional().describe('Extracted expense details if type is expense_split'),
+  groupData: GroupDataSchema.optional().describe('Extracted group details if group-related intent'),
+  friendData: FriendDataSchema.optional().describe('Extracted friend/settlement details if friend-related intent'),
   needsConfirmation: z.boolean().default(false).describe('True if details need user confirmation before saving'),
   message: z.string().optional().describe('Natural language response or clarification question for the user'),
 });

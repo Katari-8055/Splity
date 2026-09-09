@@ -1,10 +1,10 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { listExpenses, createExpenseWithSplit } from '../services/expenseService.js';
-import { listFriends } from '../services/friendService.js';
-import { createGroup, listGroups } from '../services/groupService.js';
-import { getSpendByCategory, getMonthlySummary, getDashboardOverview } from '../services/analyticsService.js';
-import { listNotifications, pushNotification } from '../services/notificationService.js';
+import { listExpenses, createExpenseWithSplit, getUserBalances, getFriendBalance, getGroupExpenses } from '../services/expenseService.js';
+import { listFriends, addFriend } from '../services/friendService.js';
+import { createGroup, listGroups, getGroup, getGroupMembers, updateGroupMembers } from '../services/groupService.js';
+import { getSpendByCategory, getMonthlySummary } from '../services/analyticsService.js';
+import { addUser, getUserByEmail } from '../services/userService.js';
 
 export const listExpensesTool = tool(
   async ({ userId, category }) => {
@@ -26,7 +26,7 @@ export const listExpensesTool = tool(
 );
 
 export const createExpenseTool = tool(
-  async ({ userId, amount, category, description, friendIds, splitType }) => {
+  async ({ userId, amount, category, description, friendIds, splitType, groupId }) => {
     try {
       const result = await createExpenseWithSplit(
         userId,
@@ -35,7 +35,9 @@ export const createExpenseTool = tool(
         'General',
         description,
         friendIds || [],
-        splitType || 'equal'
+        splitType || 'equal',
+        null,
+        groupId
       );
       return JSON.stringify(result);
     } catch (err) {
@@ -44,7 +46,7 @@ export const createExpenseTool = tool(
   },
   {
     name: 'create_expense',
-    description: 'Create a new expense and split with friends',
+    description: 'Create a new expense and split with friends or inside a group',
     schema: z.object({
       userId: z.string().describe('User ID paying'),
       amount: z.number().describe('Total amount'),
@@ -52,6 +54,7 @@ export const createExpenseTool = tool(
       description: z.string().describe('Expense description'),
       friendIds: z.array(z.string()).optional().describe('Friend IDs to split with'),
       splitType: z.enum(['equal', 'percentage', 'custom']).optional().describe('Splitting method'),
+      groupId: z.string().optional().describe('Group ID if expense belongs to a group'),
     }),
   }
 );
@@ -78,18 +81,41 @@ export const createGroupTool = tool(
   async ({ name, createdBy, members }) => {
     try {
       const group = await createGroup({ name, createdBy });
-      return JSON.stringify(group);
+      const allMembers = Array.from(new Set([createdBy, ...(members || [])]));
+      await updateGroupMembers(group.id, allMembers);
+      const groupMembers = await getGroupMembers(group.id);
+      return JSON.stringify({ group, members: groupMembers });
     } catch (err) {
       return `Error creating group: ${err.message}`;
     }
   },
   {
     name: 'create_group',
-    description: 'Create a new expense group with members',
+    description: 'Create a new expense group with members (e.g., Dargling Trip)',
     schema: z.object({
       name: z.string().describe('Group name'),
       createdBy: z.string().describe('User ID creator'),
-      members: z.array(z.string()).optional().describe('Member IDs'),
+      members: z.array(z.string()).optional().describe('Member User IDs'),
+    }),
+  }
+);
+
+export const getGroupDetailsTool = tool(
+  async ({ groupId }) => {
+    try {
+      const group = await getGroup(groupId);
+      const members = await getGroupMembers(groupId);
+      const expenses = await getGroupExpenses(groupId);
+      return JSON.stringify({ group, members, expenses });
+    } catch (err) {
+      return `Error getting group details: ${err.message}`;
+    }
+  },
+  {
+    name: 'get_group_details',
+    description: 'Get members and expenses for a specific group ID',
+    schema: z.object({
+      groupId: z.string().describe('Group ID'),
     }),
   }
 );
@@ -120,5 +146,6 @@ export const aiTools = [
   createExpenseTool,
   listFriendsTool,
   createGroupTool,
+  getGroupDetailsTool,
   getAnalyticsTool,
 ];

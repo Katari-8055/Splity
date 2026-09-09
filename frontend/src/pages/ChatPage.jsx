@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { aiService, expenseService } from '../services/api';
 
 export default function ChatPage() {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
       sender: 'assistant',
-      text: '👋 Hello! I am your **AI Expense Assistant** with full MCP support.\n\nYou can ask me to:\n• 💸 **Split an expense**: *"Split $50 dinner with Rahul Bind"*\n• 💰 **Check balances**: *"Who owes me money?"* or *"What is my balance?"*\n• 📊 **View analytics**: *"Show my spending breakdown"*\n• 👥 **Friends & Groups**: *"Show my friends"* or *"List my groups"*\n• 🧾 **Recent activity**: *"Show recent expenses"*'
+      text: '👋 Hello! I am your **SpendSavvy AI Assistant** with full autonomous group & expense superpowers.\n\nYou can ask me in English or Hindi:\n• 🏔️ **Create Group**: *"Create a group with all my friends and the group name should be Dargling Trip"*\n• 📋 **Group Details**: *"Show details of Dargling Trip group"*\n• 💸 **Split Expenses**: *"Split $60 dinner with Rahul and Alice"* or *"Add $120 hotel bill in Dargling Trip group"*\n• 💰 **Debts & Balances**: *"Who owes me money?"* or *"Settle up with Rahul"*\n• 📊 **Analytics**: *"Show my monthly spending breakdown"*\n• 👥 **Friends**: *"Show my friends"* or *"Add friend Priya"*'
     }
   ]);
   const [input, setInput] = useState('');
@@ -44,7 +46,8 @@ export default function ChatPage() {
             sender: 'assistant',
             text: res.message || 'Please review and confirm this expense split:',
             isPendingConfirmation: true,
-            splitData: res.data
+            splitData: res.data,
+            resData: res
           }
         ]);
       } else if (res.saved || (res.type === 'expense_split' && !res.needsConfirmation)) {
@@ -54,7 +57,9 @@ export default function ChatPage() {
           {
             id: Date.now() + 1,
             sender: 'assistant',
-            text: res.message || '✅ Expense successfully processed and saved!'
+            text: res.message || '✅ Expense successfully processed and saved!',
+            resType: res.type,
+            resData: res
           }
         ]);
       } else {
@@ -63,7 +68,9 @@ export default function ChatPage() {
           {
             id: Date.now() + 1,
             sender: 'assistant',
-            text: res.message || res.intent || 'Done!'
+            text: res.message || res.intent || 'Done!',
+            resType: res.type,
+            resData: res
           }
         ]);
       }
@@ -74,7 +81,7 @@ export default function ChatPage() {
         {
           id: Date.now() + 1,
           sender: 'assistant',
-          text: '❌ Sorry, I encountered an error processing your message.'
+          text: '❌ Sorry, I encountered an error processing your message. Please make sure the backend is running.'
         }
       ]);
     } finally {
@@ -106,11 +113,13 @@ export default function ChatPage() {
   }
 
   const quickPrompts = [
-    'Split $50 with all my friends',
+    'Create a group with all my friends and the group name should be Dargling Trip',
+    'Show details of Dargling Trip group',
+    'List all my groups',
     'Who owes me money?',
     'Show my spending insights',
     'Show my friends list',
-    'Show my recent expenses'
+    'Split $60 dinner with all my friends'
   ];
 
   return (
@@ -118,17 +127,17 @@ export default function ChatPage() {
       {/* Header */}
       <div className="p-4 border-b border-gray-800 bg-gray-850/80 backdrop-blur flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-xl flex items-center justify-center text-white text-xl shadow-lg shadow-blue-500/20">
+          <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 rounded-xl flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-500/20">
             🤖
           </div>
           <div>
             <h1 className="text-base font-bold text-white flex items-center gap-2">
               SpendSavvy AI Assistant
               <span className="text-[10px] uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-semibold border border-emerald-500/30">
-                MCP Connected
+                Full AI Autonomous
               </span>
             </h1>
-            <p className="text-xs text-gray-400">Expense splitting, live balances, analytics & smart queries</p>
+            <p className="text-xs text-gray-400">Create groups, split bills, query live debts & view analytics</p>
           </div>
         </div>
       </div>
@@ -149,6 +158,101 @@ export default function ChatPage() {
             >
               {m.text}
             </div>
+
+            {/* Custom Rich Card: Group Creation */}
+            {m.resType === 'create_group' && m.resData?.data?.group && (
+              <div className="mt-3 w-full max-w-xl bg-gradient-to-br from-gray-850 to-gray-900 border border-emerald-500/40 rounded-2xl p-4 shadow-xl shadow-emerald-500/10 animate-fade-in">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-700/60">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🏔️</span>
+                    <div>
+                      <span className="font-bold text-white text-base block">
+                        {m.resData.data.group.name}
+                      </span>
+                      <span className="text-xs text-emerald-400 font-medium">
+                        Group Created Successfully
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {m.resData.data.memberCount || m.resData.data.members?.length || 1} Members
+                  </span>
+                </div>
+
+                {m.resData.data.members && m.resData.data.members.length > 0 && (
+                  <div className="my-3">
+                    <div className="text-xs text-gray-400 mb-2 font-medium">Included Members:</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {m.resData.data.members.map((member, i) => (
+                        <span
+                          key={i}
+                          className="text-xs bg-gray-800 border border-gray-700 text-gray-200 px-2.5 py-1 rounded-lg flex items-center gap-1"
+                        >
+                          👤 {member.name || member.email || 'Member'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-gray-700/40 flex gap-2">
+                  <button
+                    onClick={() => processMessage(`Show details of ${m.resData.data.group.name} group`)}
+                    className="flex-1 py-2 px-3 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-xl text-xs font-semibold transition"
+                  >
+                    🔍 View Group Details
+                  </button>
+                  <button
+                    onClick={() => processMessage(`Add $100 expense in ${m.resData.data.group.name} group`)}
+                    className="flex-1 py-2 px-3 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-xl text-xs font-semibold transition"
+                  >
+                    💳 Add Expense to Group
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Rich Card: Group Details */}
+            {m.resType === 'group_details' && m.resData?.data?.group && (
+              <div className="mt-3 w-full max-w-xl bg-gray-850 border border-indigo-500/40 rounded-2xl p-4 shadow-xl shadow-indigo-500/10 animate-fade-in">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-700/60">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🏔️</span>
+                    <span className="font-bold text-white text-sm">
+                      {m.resData.data.group.name}
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    Total Spent: ${parseFloat(m.resData.data.totalSpent || 0).toFixed(2)}
+                  </span>
+                </div>
+
+                {m.resData.data.members && (
+                  <div className="my-2.5">
+                    <div className="text-xs text-gray-400 mb-1.5 font-medium">Group Members:</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {m.resData.data.members.map((member, i) => (
+                        <span
+                          key={i}
+                          className="text-xs bg-gray-900 border border-gray-700/80 text-gray-300 px-2 py-0.5 rounded-md"
+                        >
+                          👤 {member.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    onClick={() => processMessage(`Add $50 food expense in ${m.resData.data.group.name}`)}
+                    className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition"
+                  >
+                    ➕ Split Bill in {m.resData.data.group.name}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Interactive Confirmation Card */}
             {m.isPendingConfirmation && m.splitData && pendingSplit && (
@@ -230,13 +334,13 @@ export default function ChatPage() {
       </div>
 
       {/* Quick Prompts */}
-      <div className="px-4 py-2 border-t border-gray-800/80 bg-gray-850/40 flex gap-2 overflow-x-auto scrollbar-none">
+      <div className="px-4 py-2.5 border-t border-gray-800/80 bg-gray-850/40 flex gap-2 overflow-x-auto scrollbar-none">
         {quickPrompts.map((prompt, idx) => (
           <button
             key={idx}
             onClick={() => processMessage(prompt)}
             disabled={loading}
-            className="text-xs text-gray-300 hover:text-white bg-gray-800/80 hover:bg-blue-600/30 border border-gray-700/60 hover:border-blue-500/40 rounded-full px-3 py-1 whitespace-nowrap transition"
+            className="text-xs text-gray-300 hover:text-white bg-gray-800/80 hover:bg-blue-600/30 border border-gray-700/60 hover:border-blue-500/40 rounded-full px-3 py-1.5 whitespace-nowrap transition flex-shrink-0"
           >
             💬 {prompt}
           </button>
@@ -249,7 +353,7 @@ export default function ChatPage() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="e.g. Split $50 with Rahul Bind, or Who owes me money?..."
+          placeholder="e.g. Create group Dargling Trip with all friends, or Who owes me money?..."
           className="flex-1 px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 transition shadow-inner placeholder-gray-500"
         />
         <button

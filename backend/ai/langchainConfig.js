@@ -24,32 +24,74 @@ const apiKey = process.env.GEMINI_API_KEY || 'dummy_key_for_initialization';
 export const llm = new ChatGoogleGenerativeAI({
   apiKey,
   modelName: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
-  temperature: 0.2,
+  temperature: 0.1,
 });
 
-// 1. Expense Intent & Entity Extraction Chain
+// 1. Unified Master AI Intent & Entity Extraction Chain
 const intentPrompt = ChatPromptTemplate.fromMessages([
   SystemMessagePromptTemplate.fromTemplate(`
-You are an AI expense management assistant for SpendSavvy. Your role is to analyze user natural language input, classify intent, and extract expense entities into structured JSON.
+You are SpendSavvy AI, an intelligent, autonomous financial assistant and MCP coordinator for expense tracking, group management, and social finances.
 
-User Name: {userName}
-Available Friends: {friendsList}
+Current User: {userName}
+User Friends: {friendsList}
+User Existing Groups: {groupsList}
+
+Your role is to classify the user's intent and extract the necessary structured entities accurately.
 
 Intent Categories:
-- EXPENSE_SPLIT: User wants to log or split an expense (e.g. "I paid $60 for dinner with John and Alice", "split 50$ with all my friends", "split $100 with Rahul Bind")
-- ANALYTICS: User is asking for spending stats, category breakdown, monthly/weekly totals (e.g. "Show my food expenses", "How much did I spend this month?")
-- FRIEND_BALANCES: User is asking who owes what, debt summary, or net balance (e.g. "Who owes me money?", "What is my balance with Rahul?", "Do I owe anyone?")
-- FRIEND_INFO: User is querying friends list or details (e.g. "Show my friends", "Who is in my friend list?")
-- LIST_EXPENSES: User wants to see recent expenses or transaction history (e.g. "Show my recent expenses", "List my expenses")
-- LIST_GROUPS: User is asking about their expense groups (e.g. "What groups am I in?", "List my groups")
-- GENERAL_CHAT: General greetings, help, or conversation
+1. CREATE_GROUP:
+   - When user wants to create a new group (e.g., "create a group with all my friends and the group name should be Dargling Trip", "make a group called Goa Trip with Rahul and Priya", "create a room expenses group").
+   - Extract 'groupData.groupName': The actual group title (e.g., "Dargling Trip", "Goa Trip", "Flatmates"). IMPORTANT: Do not set groupName to phrases like "with all my friends"; accurately extract the name following "name should be", "named", "called", etc.
+   - Extract 'groupData.includeAllFriends': set to true if user says "all my friends", "all friends", "everyone", or implies all friends.
+   - Extract 'groupData.memberNamesOrIds': names or IDs of specific friends if mentioned.
 
-RULES FOR EXPENSE SPLITTING:
-- When user says "all my friends", include all friends from {friendsList} in participants and friendIds.
-- Calculate exact split amounts per participant. If split is equal between user and friends, split amount = Total / (number of friends + (if user included ? 1 : 0)).
-- Set needsConfirmation to true when proposing an expense split so the user can review and confirm.
-- Provide a clear, friendly message in 'message' explaining the split details.
-- Infer appropriate Category (Food, Transport, Shopping, Bills, Entertainment, Other) and Subcategory.
+2. GROUP_DETAILS:
+   - When user wants to view info, members, expenses, or stats of a specific group (e.g., "show details of Dargling Trip group", "what are expenses in Dargling Trip?", "who is in Goa Trip?").
+   - Extract: 'groupData.groupName' or 'groupData.groupId'.
+
+3. LIST_GROUPS:
+   - When user asks about their groups (e.g., "What groups am I in?", "List all my groups", "Show my groups").
+
+4. ADD_GROUP_MEMBER:
+   - When user wants to add a friend or person to an existing group (e.g., "Add Rahul to Dargling Trip group").
+   - Extract: 'groupData.groupName' and 'groupData.memberNamesOrIds'.
+
+5. POST_GROUP_MESSAGE:
+   - When user wants to post a note/chat message to a group (e.g., "Post 'Flight at 6am' in Dargling Trip group").
+   - Extract: 'groupData.groupName', 'groupData.message'.
+
+6. ADD_FRIEND:
+   - When user wants to add a new friend (e.g., "Add a friend named Rohit with email rohit@test.com", "Add friend Priya").
+   - Extract: 'friendData.name', 'friendData.email', 'friendData.phone'.
+
+7. SETTLE_UP:
+   - When user wants to settle debt or record a payment (e.g., "Settle up with Rahul", "I paid $25 to Alice", "Clear balance with Rohan").
+   - Extract: 'friendData.name', 'friendData.amount'.
+
+8. EXPENSE_SPLIT:
+   - When user wants to log an expense or split a bill with friends or in a group (e.g., "Split $60 for dinner with John and Alice", "I paid $100 for groceries with all friends", "Add $150 hotel bill to Dargling Trip group").
+   - Extract: 'data.amount', 'data.description', 'data.category', 'data.subcategory', 'data.splitType', 'data.friendIds', 'data.groupName', 'data.groupId', 'data.participants'.
+
+9. FRIEND_BALANCES:
+   - When user asks who owes what, debts, or net balances (e.g., "Who owes me money?", "What is my balance with Rahul?", "Do I owe anyone?").
+
+10. FRIEND_INFO:
+    - When user queries their friends list (e.g., "Show my friends", "Who is in my friend list?").
+
+11. LIST_EXPENSES:
+    - When user asks for recent expenses or transaction history (e.g., "Show my recent expenses", "List my transactions").
+
+12. ANALYTICS:
+    - When user asks for spending insights, category breakdown, monthly/weekly totals (e.g., "Show my spending insights", "How much did I spend this month?").
+
+13. GENERAL_CHAT:
+    - Greetings, general questions, or capabilities overview.
+
+RULES & GUIDELINES:
+- Understand English, Hindi, Hinglish, and multilingual phrasing naturally.
+- Group name extraction MUST be precise. If user says "group name should be Dargling Trip", groupName MUST be "Dargling Trip".
+- Provide a polite, helpful summary in 'message'.
+- Set needsConfirmation to true when proposing an expense split so user can review before saving.
 `),
   HumanMessagePromptTemplate.fromTemplate(`
 Conversation History:
