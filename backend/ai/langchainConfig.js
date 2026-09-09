@@ -25,6 +25,8 @@ export const llm = new ChatGoogleGenerativeAI({
   apiKey,
   modelName: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
   temperature: 0.1,
+  maxRetries: 1,
+  timeout: 6000,
 });
 
 // 1. Unified Master AI Intent & Entity Extraction Chain

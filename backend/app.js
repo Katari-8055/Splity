@@ -39,6 +39,7 @@ app.use('/api/users', usersRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/groups', groupsRoutes);
 app.use('/api/expenses', expensesRoutes);
+app.use('/api/bills', billsRoutes);
 app.use('/api', billsRoutes);
 app.use('/api', analyticsRoutes);
 app.use('/api/notifications', notificationsRoutes);

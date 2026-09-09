@@ -160,14 +160,33 @@ export async function initializeDatabase() {
       )
     `);
 
-    // Seed demo user for quick start & frontend demo mode
+    // Seed demo user and default friends for quick start & social finances
     await db.query(`
       INSERT INTO users (id, name, email, role)
-      VALUES ('demo-user-id', 'Demo User', 'demo@example.com', 'user')
-      ON CONFLICT (id) DO NOTHING
+      VALUES 
+        ('demo-user-id', 'Demo User', 'demo@example.com', 'user'),
+        ('friend-rahul', 'Rahul Sharma', 'rahul@example.com', 'user'),
+        ('friend-priya', 'Priya Patel', 'priya@example.com', 'user'),
+        ('friend-amit', 'Amit Verma', 'amit@example.com', 'user'),
+        ('friend-alice', 'Alice Smith', 'alice@example.com', 'user')
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email;
     `);
 
-    console.log('Database schema initialized successfully');
+    await db.query(`
+      INSERT INTO friends (user_id, friend_id)
+      VALUES 
+        ('demo-user-id', 'friend-rahul'),
+        ('demo-user-id', 'friend-priya'),
+        ('demo-user-id', 'friend-amit'),
+        ('demo-user-id', 'friend-alice'),
+        ('friend-rahul', 'demo-user-id'),
+        ('friend-priya', 'demo-user-id'),
+        ('friend-amit', 'demo-user-id'),
+        ('friend-alice', 'demo-user-id')
+      ON CONFLICT DO NOTHING;
+    `);
+
+    console.log('Database schema & default users initialized successfully');
   } catch (error) {
     console.error('Error initializing database:', error);
     throw error;

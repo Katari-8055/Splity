@@ -80,7 +80,7 @@ export const billService = {
     const token = localStorage.getItem('token');
     const userId = localStorage.getItem('userId') || 'demo-user-id';
 
-    const response = await fetch('/api/ocr/upload', {
+    const response = await fetch('/api/bills/ocr/upload', {
       method: 'POST',
       headers: {
         'x-user-id': userId,
@@ -90,12 +90,16 @@ export const billService = {
     });
 
     if (!response.ok) {
-      throw new Error(`OCR upload failed: ${response.statusText}`);
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Upload failed: ${response.statusText}`);
     }
     return response.json();
   },
   getBill: (billId) => fetchAPI(`/bills/${billId}`),
-  getUserBills: (userId) => fetchAPI(`/bills/user/${userId}`),
+  getUserBills: () => {
+    const userId = localStorage.getItem('userId') || 'demo-user-id';
+    return fetchAPI(`/bills/user/${userId}`);
+  },
 };
 
 export const parentService = {
