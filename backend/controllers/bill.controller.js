@@ -60,7 +60,9 @@ export async function uploadOCR(req, res, next) {
       try {
         const fs = await import('fs');
         const path = await import('path');
-        const uploadDir = path.resolve(process.cwd(), 'uploads', 'bills');
+        const { fileURLToPath } = await import('url');
+        const currentDir = path.dirname(fileURLToPath(import.meta.url));
+        const uploadDir = path.resolve(currentDir, '..', 'uploads', 'bills');
         if (!fs.existsSync(uploadDir)) {
           fs.mkdirSync(uploadDir, { recursive: true });
         }
