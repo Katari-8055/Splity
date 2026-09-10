@@ -160,6 +160,16 @@ export async function initializeDatabase() {
       )
     `);
 
+    // Performance Indexes
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_expenses_user_id ON expenses(user_id);
+      CREATE INDEX IF NOT EXISTS idx_expenses_group_id ON expenses(group_id);
+      CREATE INDEX IF NOT EXISTS idx_expenses_created_at ON expenses(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_expense_splits_user_id ON expense_splits(user_id);
+      CREATE INDEX IF NOT EXISTS idx_friends_friend_id ON friends(friend_id);
+      CREATE INDEX IF NOT EXISTS idx_group_members_user_id ON group_members(user_id);
+    `);
+
     // Seed demo user and default friends for quick start & social finances
     await db.query(`
       INSERT INTO users (id, name, email, role)

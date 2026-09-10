@@ -38,6 +38,8 @@ export default function ExpensesPage() {
 
   const categories = ['All Categories', 'Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Other'];
 
+  const currentUserId = localStorage.getItem('userId') || 'demo-user-id';
+
   return (
     <div className="space-y-5 max-w-6xl mx-auto">
       {/* Header */}
@@ -132,44 +134,66 @@ export default function ExpensesPage() {
                   <th className="px-5 py-3 font-semibold">Description</th>
                   <th className="px-5 py-3 font-semibold">Category</th>
                   <th className="px-5 py-3 font-semibold">Paid By</th>
-                  <th className="px-5 py-3 font-semibold">Splits</th>
-                  <th className="px-5 py-3 font-semibold text-right">Amount</th>
+                  <th className="px-5 py-3 font-semibold">Split Info</th>
+                  <th className="px-5 py-3 font-semibold text-right">Total Bill / Your Share</th>
                   <th className="px-5 py-3 font-semibold text-right">Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1e2638]/70">
-                {filteredExpenses.map((e) => (
-                  <tr key={e.id} className="hover:bg-[#161c2a] transition-colors">
-                    <td className="px-5 py-3.5 font-semibold text-slate-100">
-                      {e.description || e.category}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                        {e.category}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-300 font-medium">
-                      {e.paid_by_name || 'You'}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {e.splits && e.splits.length > 0 ? (
-                        <div className="flex items-center space-x-1">
-                          <span className="text-[11px] text-slate-400 bg-[#1a2233] px-2 py-0.5 rounded border border-[#242f46]">
-                            Split ({e.splits.length})
-                          </span>
+                {filteredExpenses.map((e) => {
+                  const total = parseFloat(e.amount || 0);
+                  const isPayer = e.user_id === currentUserId;
+                  const mySplit = Array.isArray(e.splits) ? e.splits.find((s) => s.userId === currentUserId) : null;
+                  const myShare = mySplit ? parseFloat(mySplit.amount) : (e.splits?.length ? (total / e.splits.length) : total);
+
+                  return (
+                    <tr key={e.id} className="hover:bg-[#161c2a] transition-colors">
+                      <td className="px-5 py-3.5 font-semibold text-slate-100">
+                        {e.description || e.category}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                          {e.category}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-300 font-medium">
+                        {e.paid_by_name || (isPayer ? 'You' : 'Friend')}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {e.splits && e.splits.length > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[11px] text-slate-300 bg-[#1a2233] px-2 py-0.5 rounded border border-[#242f46] inline-block w-fit">
+                              👥 {e.splits.length} people (${(total / e.splits.length).toFixed(2)}/ea)
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-500">Personal (100%)</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="font-bold text-slate-100 font-mono text-sm">
+                          ${total.toFixed(2)}
                         </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-500">Personal</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5 text-right font-bold text-slate-100">
-                      ${parseFloat(e.amount).toFixed(2)}
-                    </td>
-                    <td className="px-5 py-3.5 text-right text-slate-400">
-                      {new Date(e.created_at || Date.now()).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
+                        {e.splits && e.splits.length > 0 && (
+                          <div className="text-[11px] mt-0.5">
+                            {isPayer ? (
+                              <span className="text-emerald-400 font-medium">
+                                you lent ${(total - myShare).toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-rose-400 font-medium">
+                                you borrowed ${myShare.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-right text-slate-400">
+                        {new Date(e.created_at || Date.now()).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

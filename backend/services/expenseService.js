@@ -80,6 +80,77 @@ export async function getGroupExpenses(groupId) {
   return result.rows;
 }
 
+/**
+ * Calculate deterministic equal splits down to integer cents.
+ * Distributes remainder cents one by one to ensure SUM(splits) === totalAmount exactly.
+ */
+export function calculateEqualSplits(totalAmount, participantIds) {
+  if (!participantIds || participantIds.length === 0) {
+    throw new Error('At least one participant is required for splitting');
+  }
+
+  const totalCents = Math.round(parseFloat(totalAmount) * 100);
+  const count = participantIds.length;
+  const baseCents = Math.floor(totalCents / count);
+  const remainderCents = totalCents % count;
+
+  return participantIds.map((userId, index) => {
+    const shareCents = baseCents + (index < remainderCents ? 1 : 0);
+    return {
+      userId,
+      amount: parseFloat((shareCents / 100).toFixed(2))
+    };
+  });
+}
+
+/**
+ * Validate and normalize custom splits.
+ * Enforces positive amounts, no duplicate participants, and SUM(shares) === totalAmount exactly.
+ */
+export function validateAndNormalizeCustomSplits(totalAmount, customSplits) {
+  if (!Array.isArray(customSplits) || customSplits.length === 0) {
+    throw new Error('Custom splits must be a non-empty array of participants and amounts');
+  }
+
+  const totalCents = Math.round(parseFloat(totalAmount) * 100);
+  const seenUserIds = new Set();
+  let sumCents = 0;
+
+  const normalized = customSplits.map((s) => {
+    if (!s.userId || typeof s.userId !== 'string' || !s.userId.trim()) {
+      throw new Error('Each custom split participant must have a valid userId');
+    }
+
+    const cleanUserId = s.userId.trim();
+    if (seenUserIds.has(cleanUserId)) {
+      throw new Error(`Duplicate participant '${cleanUserId}' in custom split`);
+    }
+    seenUserIds.add(cleanUserId);
+
+    const shareAmount = parseFloat(s.amount);
+    if (isNaN(shareAmount) || shareAmount <= 0) {
+      throw new Error(`Custom split amount for '${cleanUserId}' must be a positive number greater than 0`);
+    }
+
+    const shareCents = Math.round(shareAmount * 100);
+    sumCents += shareCents;
+
+    return {
+      userId: cleanUserId,
+      amount: parseFloat((shareCents / 100).toFixed(2)),
+      userName: s.userName
+    };
+  });
+
+  if (sumCents !== totalCents) {
+    const sumFormatted = (sumCents / 100).toFixed(2);
+    const totalFormatted = (totalCents / 100).toFixed(2);
+    throw new Error(`Sum of custom split shares ($${sumFormatted}) must equal the total expense amount ($${totalFormatted})`);
+  }
+
+  return normalized;
+}
+
 export async function createExpenseWithSplit(
   userId,
   amount,
@@ -91,10 +162,40 @@ export async function createExpenseWithSplit(
   customSplits,
   groupId
 ) {
+  // Input validation
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    throw new Error('Valid userId is required');
+  }
+  const cleanUserId = userId.trim();
+
+  const parsedAmount = parseFloat(amount);
+  if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    throw new Error('Expense amount must be a positive number greater than 0');
+  }
+  const normalizedTotalAmount = parseFloat((Math.round(parsedAmount * 100) / 100).toFixed(2));
+
+  if (!category || typeof category !== 'string' || !category.trim()) {
+    throw new Error('Expense category is required');
+  }
+
+  // Deduplicate and filter friend IDs
+  const deduplicatedFriendIds = Array.from(
+    new Set((friendIds || []).filter((fId) => fId && typeof fId === 'string' && fId.trim() !== cleanUserId).map((fId) => fId.trim()))
+  );
+
+  let splits;
+  if (splitType === 'custom' && customSplits && customSplits.length > 0) {
+    splits = validateAndNormalizeCustomSplits(normalizedTotalAmount, customSplits);
+  } else {
+    // Equal split: creator + all specified friends
+    const allParticipants = [cleanUserId, ...deduplicatedFriendIds];
+    splits = calculateEqualSplits(normalizedTotalAmount, allParticipants);
+  }
+
   const pool = await connectToPostgres();
   const client = await pool.connect();
   const expenseId = uuidv4();
-  
+
   try {
     await client.query('BEGIN');
 
@@ -103,37 +204,24 @@ export async function createExpenseWithSplit(
       `INSERT INTO users (id, name, email, role) 
        VALUES ($1, $2, $3, 'user') 
        ON CONFLICT (id) DO NOTHING`,
-      [userId, 'User', `${userId}@example.com`]
+      [cleanUserId, 'User', `${cleanUserId}@example.com`]
     );
-    
+
     const expenseQuery = `
       INSERT INTO expenses (id, user_id, group_id, category, subcategory, amount, description, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING *`;
     const expenseValues = [
       expenseId,
-      userId,
+      cleanUserId,
       groupId || null,
-      category,
-      subcategory || null,
-      amount,
-      description || null,
+      category.trim(),
+      subcategory ? subcategory.trim() : null,
+      normalizedTotalAmount,
+      description ? description.trim() : null,
     ];
     const expenseRes = await client.query(expenseQuery, expenseValues);
     const expense = expenseRes.rows[0];
-    
-    let splits;
-    if (splitType === 'equal') {
-      const validFriendIds = friendIds.filter(fId => fId && fId !== userId);
-      const totalPeople = validFriendIds.length + 1;
-      const splitAmount = parseFloat((amount / totalPeople).toFixed(2));
-      splits = [
-        { userId, amount: splitAmount },
-        ...validFriendIds.map(fId => ({ userId: fId, amount: splitAmount }))
-      ];
-    } else {
-      splits = customSplits || [{ userId, amount }];
-    }
-    
+
     for (const s of splits) {
       await client.query(
         `INSERT INTO users (id, name, email, role) 
@@ -148,18 +236,16 @@ export async function createExpenseWithSplit(
         [expenseId, s.userId, s.amount]
       );
     }
-    
+
     await client.query('COMMIT');
 
-    for (const friendId of friendIds) {
-      if (friendId !== userId) {
-        pushNotification(
-          friendId,
-          `You have been added to a ${category} expense of $${amount} by ${userId}`
-        ).catch(() => {});
-      }
+    for (const friendId of deduplicatedFriendIds) {
+      pushNotification(
+        friendId,
+        `You have been added to a ${category} expense of $${normalizedTotalAmount} by ${cleanUserId}`
+      ).catch(() => {});
     }
-    
+
     return { expense, splits };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -177,68 +263,100 @@ export async function getFriendBalance(userId, friendId) {
     JOIN expense_splits es ON e.id = es.expense_id
     WHERE e.user_id = $1 AND es.user_id = $2
   `, [userId, friendId]);
-  
+
   const userOwesResult = await db.query(`
     SELECT COALESCE(SUM(es.amount), 0) as total
     FROM expenses e
     JOIN expense_splits es ON e.id = es.expense_id
     WHERE e.user_id = $2 AND es.user_id = $1
   `, [userId, friendId]);
-  
+
   const owedToUser = parseFloat(owedToUserResult.rows[0].total);
   const userOwes = parseFloat(userOwesResult.rows[0].total);
-  return owedToUser - userOwes;
+  return parseFloat((owedToUser - userOwes).toFixed(2));
 }
 
+/**
+ * Optimized getUserBalances with Single Set-Based Aggregation (Eliminates N+1 Queries)
+ */
 export async function getUserBalances(userId) {
   const db = await connectToPostgres();
-  
-  // Find all related people: direct friends, group co-members, or anyone who split expenses with user
-  const relatedPeopleResult = await db.query(
-    `SELECT DISTINCT u.id, u.name, u.email
-     FROM users u
-     WHERE u.id != $1 AND (
-       u.id IN (SELECT friend_id FROM friends WHERE user_id = $1) OR
-       u.id IN (SELECT user_id FROM friends WHERE friend_id = $1) OR
-       u.id IN (
-         SELECT gm2.user_id FROM group_members gm1
-         JOIN group_members gm2 ON gm1.group_id = gm2.group_id
-         WHERE gm1.user_id = $1 AND gm2.user_id != $1
-       ) OR
-       u.id IN (
-         SELECT es.user_id FROM expenses e
-         JOIN expense_splits es ON e.id = es.expense_id
-         WHERE e.user_id = $1
-       ) OR
-       u.id IN (
-         SELECT e.user_id FROM expenses e
-         JOIN expense_splits es ON e.id = es.expense_id
-         WHERE es.user_id = $1
-       )
-     )`,
-    [userId]
-  );
-  
-  const balances = await Promise.all(
-    relatedPeopleResult.rows.map(async (friend) => {
-      const balance = await getFriendBalance(userId, friend.id);
-      return {
-        friendId: friend.id,
-        friendName: friend.name || 'Friend',
-        friendEmail: friend.email,
-        balance
-      };
-    })
-  );
-  
-  const totalYouOwe = balances.filter(b => b.balance < 0).reduce((acc, b) => acc + Math.abs(b.balance), 0);
-  const totalYouAreOwed = balances.filter(b => b.balance > 0).reduce((acc, b) => acc + b.balance, 0);
-  
+
+  const aggregatedBalancesQuery = `
+    WITH related_users AS (
+      SELECT DISTINCT u.id AS friend_id, u.name AS friend_name, u.email AS friend_email
+      FROM users u
+      WHERE u.id != $1 AND (
+        u.id IN (SELECT friend_id FROM friends WHERE user_id = $1) OR
+        u.id IN (SELECT user_id FROM friends WHERE friend_id = $1) OR
+        u.id IN (
+          SELECT gm2.user_id FROM group_members gm1
+          JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+          WHERE gm1.user_id = $1 AND gm2.user_id != $1
+        ) OR
+        u.id IN (
+          SELECT es.user_id FROM expenses e
+          JOIN expense_splits es ON e.id = es.expense_id
+          WHERE e.user_id = $1
+        ) OR
+        u.id IN (
+          SELECT e.user_id FROM expenses e
+          JOIN expense_splits es ON e.id = es.expense_id
+          WHERE es.user_id = $1
+        )
+      )
+    ),
+    debts_owed AS (
+      -- Friends owe user (User paid, Friend is in split)
+      SELECT es.user_id AS friend_id, COALESCE(SUM(es.amount), 0) AS owed_to_user
+      FROM expenses e
+      JOIN expense_splits es ON e.id = es.expense_id
+      WHERE e.user_id = $1
+      GROUP BY es.user_id
+    ),
+    debts_owing AS (
+      -- User owes friends (Friend paid, User is in split)
+      SELECT e.user_id AS friend_id, COALESCE(SUM(es.amount), 0) AS user_owes
+      FROM expenses e
+      JOIN expense_splits es ON e.id = es.expense_id
+      WHERE es.user_id = $1
+      GROUP BY e.user_id
+    )
+    SELECT 
+      ru.friend_id AS "friendId",
+      COALESCE(ru.friend_name, 'Friend') AS "friendName",
+      ru.friend_email AS "friendEmail",
+      COALESCE(d_owed.owed_to_user, 0)::NUMERIC AS "owedToUser",
+      COALESCE(d_owing.user_owes, 0)::NUMERIC AS "userOwes",
+      (COALESCE(d_owed.owed_to_user, 0) - COALESCE(d_owing.user_owes, 0))::NUMERIC AS balance
+    FROM related_users ru
+    LEFT JOIN debts_owed d_owed ON ru.friend_id = d_owed.friend_id
+    LEFT JOIN debts_owing d_owing ON ru.friend_id = d_owing.friend_id
+    ORDER BY ru.friend_name ASC;
+  `;
+
+  const result = await db.query(aggregatedBalancesQuery, [userId]);
+
+  const balances = result.rows.map((row) => ({
+    friendId: row.friendId,
+    friendName: row.friendName,
+    friendEmail: row.friendEmail,
+    balance: parseFloat(parseFloat(row.balance || 0).toFixed(2))
+  }));
+
+  const totalYouOwe = balances
+    .filter((b) => b.balance < 0)
+    .reduce((acc, b) => acc + Math.abs(b.balance), 0);
+
+  const totalYouAreOwed = balances
+    .filter((b) => b.balance > 0)
+    .reduce((acc, b) => acc + b.balance, 0);
+
   return {
     balances,
-    totalYouOwe,
-    totalYouAreOwed,
-    netBalance: totalYouAreOwed - totalYouOwe
+    totalYouOwe: parseFloat(totalYouOwe.toFixed(2)),
+    totalYouAreOwed: parseFloat(totalYouAreOwed.toFixed(2)),
+    netBalance: parseFloat((totalYouAreOwed - totalYouOwe).toFixed(2))
   };
 }
 
