@@ -332,6 +332,7 @@ class ExpenseSplitterServer {
               type: "object",
               properties: {
                 groupId: { type: "string", description: "Group ID" },
+                userId: { type: "string", description: "Authenticated User ID" },
               },
               required: ["groupId"],
             },
@@ -347,32 +348,44 @@ class ExpenseSplitterServer {
         switch (name) {
           case "add_user": {
             const { name: userName, email, phone, balance } = args;
+            if (!userName || typeof userName !== 'string' || !userName.trim()) {
+              throw new McpError(ErrorCode.InvalidParams, "User name is required");
+            }
+            if (!email || typeof email !== 'string' || !email.includes('@')) {
+              throw new McpError(ErrorCode.InvalidParams, "A valid email address is required");
+            }
             const userId = uuidv4();
-            const user = await addUser({ id: userId, name: userName, email, phone, balance });
+            const user = await addUser({ id: userId, name: userName.trim(), email: email.trim().toLowerCase(), phone, balance });
             return { content: [{ type: "text", text: `User created successfully: ${JSON.stringify(user)}` }] };
           }
           case "get_user": {
             const { userId } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const user = await getUser(userId);
             return { content: [{ type: "text", text: user ? JSON.stringify(user) : "User not found" }] };
           }
           case "search_friends": {
             const { userId, prefix } = args;
-            const friends = await searchFriends(userId, prefix);
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
+            const friends = await searchFriends(userId, prefix || "");
             return { content: [{ type: "text", text: JSON.stringify(friends) }] };
           }
           case "add_friend": {
             const { userId, friendEmail, friendPhone } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "Authenticated user ID is required");
             let friend;
-            if (friendEmail) {
-              friend = await getUserByEmail(friendEmail);
-            } else if (friendPhone) {
-              friend = await getUserByPhone(friendPhone);
+            if (friendEmail && typeof friendEmail === 'string' && friendEmail.trim()) {
+              friend = await getUserByEmail(friendEmail.trim().toLowerCase());
+            } else if (friendPhone && typeof friendPhone === 'string' && friendPhone.trim()) {
+              friend = await getUserByPhone(friendPhone.trim());
             } else {
-              throw new McpError(ErrorCode.InvalidRequest, "Either email or phone must be provided");
+              throw new McpError(ErrorCode.InvalidParams, "Either a valid email or phone must be provided");
             }
             if (!friend) {
-              throw new McpError(ErrorCode.InvalidRequest, "Friend not found with provided contact info");
+              throw new McpError(ErrorCode.InvalidParams, "Friend not found with provided contact info");
+            }
+            if (friend.id === userId) {
+              throw new McpError(ErrorCode.InvalidParams, "You cannot add yourself as a friend");
             }
             const friendship = await addFriend(userId, friend.id);
             await addFriend(friend.id, userId);
@@ -380,22 +393,51 @@ class ExpenseSplitterServer {
           }
           case "search_all_users": {
             const { searchTerm } = args;
-            const users = await searchAllUsers(searchTerm);
+            if (!searchTerm || typeof searchTerm !== 'string') {
+              throw new McpError(ErrorCode.InvalidParams, "Search term is required");
+            }
+            const users = await searchAllUsers(searchTerm.trim());
             return { content: [{ type: "text", text: JSON.stringify(users) }] };
           }
           case "list_friends": {
             const { userId } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const friends = await listFriends(userId);
             return { content: [{ type: "text", text: JSON.stringify(friends) }] };
           }
           case "create_expense_with_split": {
             const { userId, amount, category, subcategory, description, friendIds, splitType, groupId } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "Authenticated user ID is required");
+            
+            const numAmount = parseFloat(amount);
+            if (isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
+              throw new McpError(ErrorCode.InvalidParams, "Expense amount must be a positive number greater than 0");
+            }
+            if (!description || typeof description !== 'string' || !description.trim()) {
+              throw new McpError(ErrorCode.InvalidParams, "Expense description is required");
+            }
+            if (!category || typeof category !== 'string' || !category.trim()) {
+              throw new McpError(ErrorCode.InvalidParams, "Expense category is required");
+            }
+            if (!friendIds || !Array.isArray(friendIds) || friendIds.length === 0) {
+              throw new McpError(ErrorCode.InvalidParams, "At least one participant/friend is required to split an expense");
+            }
+
+            // If group is specified, verify user is a member
+            if (groupId) {
+              const members = await getGroupMembers(groupId);
+              const isMember = members.some((m) => m.id === userId || m.user_id === userId);
+              if (!isMember) {
+                throw new McpError(ErrorCode.InvalidRequest, "User is not a member of the specified group");
+              }
+            }
+
             const result = await createExpenseWithSplit(
               userId,
-              amount,
-              category,
-              subcategory || '',
-              description,
+              numAmount,
+              category.trim(),
+              subcategory ? subcategory.trim() : '',
+              description.trim(),
               friendIds,
               splitType || 'equal',
               null,
@@ -405,51 +447,76 @@ class ExpenseSplitterServer {
           }
           case "list_expenses": {
             const { userId, category, startDate, endDate } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const expenses = await listExpenses(userId, { category, startDate, endDate });
             return { content: [{ type: "text", text: JSON.stringify(expenses) }] };
           }
           case "get_spending_by_category": {
             const { userId, month, year } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const spending = await getSpendByCategory(userId, month, year);
             return { content: [{ type: "text", text: JSON.stringify(spending) }] };
           }
           case "get_monthly_summary": {
             const { userId } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const summary = await getMonthlySummary(userId);
             return { content: [{ type: "text", text: JSON.stringify(summary) }] };
           }
           case "get_weekly_summary": {
             const { userId } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const summary = await getWeeklySummary(userId);
             return { content: [{ type: "text", text: JSON.stringify(summary) }] };
           }
           case "get_category_spending": {
             const { userId, category, startDate, endDate } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const spending = await getCategorySpending(userId, category, startDate, endDate);
             return { content: [{ type: "text", text: JSON.stringify(spending) }] };
           }
           case "create_group": {
             const { name: groupName, createdBy, members } = args;
+            if (!groupName || typeof groupName !== 'string' || !groupName.trim()) {
+              throw new McpError(ErrorCode.InvalidParams, "Group name is required");
+            }
+            if (!createdBy) {
+              throw new McpError(ErrorCode.InvalidParams, "CreatedBy user ID is required");
+            }
             const groupId = uuidv4();
-            const group = await createGroup({ id: groupId, name: groupName, createdBy });
-            if (members && members.length > 0) {
-              await updateGroupMembers(groupId, [createdBy, ...members]);
-              for (const memberId of members) {
-                await pushNotification(memberId, `You have been added to group: ${groupName}`).catch(() => {});
-              }
+            const group = await createGroup({ id: groupId, name: groupName.trim(), createdBy });
+            const memberList = Array.isArray(members) ? members : [];
+            await updateGroupMembers(groupId, [createdBy, ...memberList]);
+            for (const memberId of memberList) {
+              await pushNotification(memberId, `You have been added to group: ${groupName.trim()}`).catch(() => {});
             }
             return { content: [{ type: "text", text: `Group created successfully: ${JSON.stringify(group)}` }] };
           }
           case "list_groups": {
             const { userId } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const groups = await listGroups(userId);
             return { content: [{ type: "text", text: JSON.stringify(groups) }] };
           }
           case "get_group_details": {
-            const { groupId } = args;
-            const [group, members, expenses, messages] = await Promise.all([
-              getGroup(groupId),
-              getGroupMembers(groupId),
+            const { groupId, userId } = args;
+            if (!groupId) throw new McpError(ErrorCode.InvalidParams, "Group ID is required");
+            
+            const group = await getGroup(groupId);
+            if (!group) {
+              throw new McpError(ErrorCode.InvalidRequest, "Group not found");
+            }
+
+            const members = await getGroupMembers(groupId);
+            // Resource authorization: if userId is provided, ensure user is a member
+            if (userId) {
+              const isMember = members.some((m) => m.id === userId || m.user_id === userId) || group.created_by === userId;
+              if (!isMember) {
+                throw new McpError(ErrorCode.InvalidRequest, "Access denied: you are not a member of this group");
+              }
+            }
+
+            const [expenses, messages] = await Promise.all([
               getGroupExpenses(groupId),
               getGroupMessages(groupId)
             ]);
@@ -463,36 +530,54 @@ class ExpenseSplitterServer {
           }
           case "get_friend_contributions": {
             const { groupId } = args;
+            if (!groupId) throw new McpError(ErrorCode.InvalidParams, "Group ID is required");
             const contributions = await getFriendContributions(groupId);
             return { content: [{ type: "text", text: JSON.stringify(contributions) }] };
           }
           case "get_user_balances": {
             const { userId } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const balances = await getUserBalances(userId);
             return { content: [{ type: "text", text: JSON.stringify(balances) }] };
           }
           case "settle_up": {
             const { userId, friendId, amount } = args;
-            const settlement = await settleDebt(userId, friendId, amount);
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "Authenticated user ID is required");
+            if (!friendId) throw new McpError(ErrorCode.InvalidParams, "Friend ID is required");
+            
+            let customAmount = null;
+            if (amount !== undefined && amount !== null && amount !== '') {
+              const parsed = parseFloat(amount);
+              if (isNaN(parsed) || !isFinite(parsed) || parsed <= 0) {
+                throw new McpError(ErrorCode.InvalidParams, "Settlement amount must be a positive number");
+              }
+              customAmount = parsed;
+            }
+
+            const settlement = await settleDebt(userId, friendId, customAmount);
             return { content: [{ type: "text", text: JSON.stringify(settlement) }] };
           }
           case "list_notifications": {
             const { userId } = args;
+            if (!userId) throw new McpError(ErrorCode.InvalidParams, "User ID is required");
             const notifications = await listNotifications(userId);
             return { content: [{ type: "text", text: JSON.stringify(notifications) }] };
           }
           case "acknowledge_notification": {
             const { notificationId } = args;
+            if (!notificationId) throw new McpError(ErrorCode.InvalidParams, "Notification ID is required");
             const notification = await acknowledgeNotification(notificationId);
             return { content: [{ type: "text", text: `Notification acknowledged: ${JSON.stringify(notification)}` }] };
           }
           case "upload_receipt": {
             const { expenseId, fileUrl } = args;
+            if (!expenseId || !fileUrl) throw new McpError(ErrorCode.InvalidParams, "Expense ID and File URL are required");
             const receipt = await saveReceipt(expenseId, fileUrl);
             return { content: [{ type: "text", text: `Receipt uploaded successfully: ${JSON.stringify(receipt)}` }] };
           }
           case "get_receipts": {
             const { expenseId } = args;
+            if (!expenseId) throw new McpError(ErrorCode.InvalidParams, "Expense ID is required");
             const receipts = await getReceiptsByExpense(expenseId);
             return { content: [{ type: "text", text: JSON.stringify(receipts) }] };
           }
@@ -500,10 +585,14 @@ class ExpenseSplitterServer {
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
         }
       } catch (error) {
-        console.error(`Error executing tool ${name}:`, error);
+        // Safe sanitized error handling without exposing SQL or stack traces
+        const isMcpError = error instanceof McpError;
+        const safeMessage = error.message ? error.message.replace(/(\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|TABLE)\b.*)/gi, 'Database error occurred') : 'Operation failed';
+        console.error(`[MCP Tool Error] ${name}:`, error.message);
+        
         throw new McpError(
-          ErrorCode.InternalError,
-          `Error executing tool: ${error.message || String(error)}`
+          isMcpError ? error.code : ErrorCode.InternalError,
+          safeMessage
         );
       }
     });

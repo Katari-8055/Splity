@@ -92,11 +92,9 @@ class SpendSavvyMcpClient {
     // Security context binding: ensure caller cannot impersonate another user
     const safeArgs = { ...args };
     if (authenticatedUserId) {
-      // Overwrite or set user identification parameters with trusted auth context
-      if ('userId' in safeArgs || !safeArgs.userId) {
-        safeArgs.userId = authenticatedUserId;
-      }
-      if ('createdBy' in safeArgs) {
+      // Overwrite user identification parameters with trusted auth context unconditionally
+      safeArgs.userId = authenticatedUserId;
+      if ('createdBy' in safeArgs || toolName === 'create_group') {
         safeArgs.createdBy = authenticatedUserId;
       }
     }

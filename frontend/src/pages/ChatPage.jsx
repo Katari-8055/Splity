@@ -207,6 +207,7 @@ I can help you manage your expenses, groups, and social finances naturally. Here
           }
         ]);
       } else {
+        setPendingSplit(null);
         setMessages((prev) => [
           ...prev,
           {
@@ -220,6 +221,7 @@ I can help you manage your expenses, groups, and social finances naturally. Here
       }
     } catch (err) {
       console.error('Chat error:', err);
+      setPendingSplit(null);
       setMessages((prev) => [
         ...prev,
         {
