@@ -7,15 +7,15 @@ import {
   getMessagesForGroup,
   postMessageToGroup
 } from '../controllers/group.controller.js';
-import { optionalAuth } from '../middlewares/auth.middleware.js';
+import { authenticateToken } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
-router.get('/', optionalAuth, getGroups);
-router.post('/', optionalAuth, createGroupController);
-router.get('/:id', optionalAuth, getGroupDetails);
-router.get('/:id/expenses', optionalAuth, getExpensesForGroup);
-router.get('/:id/messages', optionalAuth, getMessagesForGroup);
-router.post('/:id/messages', optionalAuth, postMessageToGroup);
+router.get('/', authenticateToken, getGroups);
+router.post('/', authenticateToken, createGroupController);
+router.get('/:id', authenticateToken, getGroupDetails);
+router.get('/:id/expenses', authenticateToken, getExpensesForGroup);
+router.get('/:id/messages', authenticateToken, getMessagesForGroup);
+router.post('/:id/messages', authenticateToken, postMessageToGroup);
 
 export default router;

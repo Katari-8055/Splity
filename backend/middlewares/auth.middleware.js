@@ -1,43 +1,48 @@
 import { verifyToken } from '../services/authService.js';
 
+/**
+ * Strict authentication middleware.
+ * Authenticates requests exclusively via cryptographically verified Bearer JWT tokens.
+ * Client-controlled headers such as 'x-user-id' are explicitly ignored.
+ */
 export function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  const userIdHeader = req.headers['x-user-id'];
-
-  if (token) {
-    const decoded = verifyToken(token);
-    if (decoded) {
-      req.user = decoded;
-      return next();
-    }
+  if (!authHeader || typeof authHeader !== 'string') {
+    return res.status(401).json({ error: 'Authentication required. Missing Authorization header.' });
   }
 
-  // Fallback to x-user-id header
-  if (userIdHeader) {
-    req.user = { userId: userIdHeader };
-    return next();
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer' || !parts[1]) {
+    return res.status(401).json({ error: 'Authentication required. Format must be: Bearer <token>' });
   }
 
-  return res.status(401).json({ error: 'Access token or user ID required' });
+  const token = parts[1];
+  const decoded = verifyToken(token);
+
+  if (!decoded || !decoded.userId) {
+    return res.status(401).json({ error: 'Authentication failed. Invalid or expired token.' });
+  }
+
+  req.user = decoded;
+  return next();
 }
 
+/**
+ * Optional authentication middleware.
+ * If a valid Bearer token is provided, populates req.user.
+ * If no token or invalid token is provided, req.user remains undefined/null without failing.
+ * Client-controlled identity headers are ignored.
+ */
 export function optionalAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  const userIdHeader = req.headers['x-user-id'];
-
-  if (token) {
-    const decoded = verifyToken(token);
-    if (decoded) {
-      req.user = decoded;
+  if (authHeader && typeof authHeader === 'string') {
+    const parts = authHeader.split(' ');
+    if (parts.length === 2 && parts[0] === 'Bearer' && parts[1]) {
+      const decoded = verifyToken(parts[1]);
+      if (decoded && decoded.userId) {
+        req.user = decoded;
+      }
     }
   }
-
-  // Always fallback to x-user-id if req.user not set by token
-  if (!req.user && userIdHeader) {
-    req.user = { userId: userIdHeader };
-  }
-
-  next();
+  return next();
 }

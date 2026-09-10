@@ -24,6 +24,19 @@ export async function createGroup(group) {
   return result.rows[0];
 }
 
+export async function isUserInGroup(groupId, userId) {
+  if (!groupId || !userId) return false;
+  const db = await connectToPostgres();
+  const result = await db.query(
+    `SELECT 1 FROM groups g
+     LEFT JOIN group_members gm ON gm.group_id = g.id
+     WHERE (g.id = $1 OR g.name ILIKE $1) AND (g.created_by = $2 OR gm.user_id = $2)
+     LIMIT 1`,
+    [groupId, userId]
+  );
+  return result.rows.length > 0;
+}
+
 export async function getGroup(groupId) {
   const db = await connectToPostgres();
   // Match by ID or by name

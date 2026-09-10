@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { getAnalyticsData, getDashboardData } from '../controllers/analytics.controller.js';
-import { optionalAuth } from '../middlewares/auth.middleware.js';
+import { authenticateToken } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
-router.get('/analytics', optionalAuth, getAnalyticsData);
-router.get('/dashboard', optionalAuth, getDashboardData);
+router.get('/analytics', authenticateToken, getAnalyticsData);
+router.get('/dashboard', authenticateToken, getDashboardData);
 
 export default router;

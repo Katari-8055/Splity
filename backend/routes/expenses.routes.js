@@ -7,17 +7,16 @@ import {
   settleDebtController,
   getBalancesController
 } from '../controllers/expense.controller.js';
-import { optionalAuth } from '../middlewares/auth.middleware.js';
+import { authenticateToken } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
-router.post('/create', optionalAuth, createExpense);
-router.post('/save', optionalAuth, createExpense);
-router.get('/history', optionalAuth, getExpenseHistory);
-router.get('/balances', optionalAuth, getBalancesController);
-router.post('/ai-split', optionalAuth, aiSplitExpense);
-router.post('/settle', optionalAuth, settleDebtController);
-router.post('/:id/pay', optionalAuth, payExpenseController);
+router.post('/create', authenticateToken, createExpense);
+router.post('/save', authenticateToken, createExpense);
+router.get('/history', authenticateToken, getExpenseHistory);
+router.get('/balances', authenticateToken, getBalancesController);
+router.post('/ai-split', authenticateToken, aiSplitExpense);
+router.post('/settle', authenticateToken, settleDebtController);
+router.post('/:id/pay', authenticateToken, payExpenseController);
 
 export default router;
-

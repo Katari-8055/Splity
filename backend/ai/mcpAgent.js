@@ -12,7 +12,10 @@ export class SpendSavvyMcpAgent {
    */
   async processMessage(userMessage, userContext = {}) {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const userId = userContext.userId || "demo-user-id";
+    if (!userContext || !userContext.userId) {
+      throw new Error('Authenticated user context is required to execute AI Agent.');
+    }
+    const userId = userContext.userId;
     const userName = userContext.userName || "User";
     const startTime = Date.now();
 

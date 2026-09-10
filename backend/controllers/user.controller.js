@@ -2,9 +2,9 @@ import { getUser, searchAllUsers, initUser } from '../services/userService.js';
 
 export async function getProfile(req, res, next) {
   try {
-    const userId = req.user?.userId || req.query.userId;
+    const userId = req.user?.userId;
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
     const user = await getUser(userId);
     if (!user) {

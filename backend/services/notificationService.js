@@ -20,8 +20,15 @@ export async function listNotifications(userId) {
   return result.rows;
 }
 
-export async function acknowledgeNotification(notificationId) {
+export async function acknowledgeNotification(notificationId, userId = null) {
   const db = await connectToPostgres();
+  if (userId) {
+    const result = await db.query(
+      `UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [notificationId, userId]
+    );
+    return result.rows[0] || null;
+  }
   const result = await db.query(
     `UPDATE notifications SET is_read = true WHERE id = $1 RETURNING *`,
     [notificationId]

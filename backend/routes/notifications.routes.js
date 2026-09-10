@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { getNotifications, ackNotification, createNotification } from '../controllers/notification.controller.js';
-import { optionalAuth } from '../middlewares/auth.middleware.js';
+import { authenticateToken } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
-router.get('/', optionalAuth, getNotifications);
-router.post('/ack', optionalAuth, ackNotification);
-router.post('/', optionalAuth, createNotification);
+router.get('/', authenticateToken, getNotifications);
+router.post('/ack', authenticateToken, ackNotification);
+router.post('/', authenticateToken, createNotification);
 
 export default router;

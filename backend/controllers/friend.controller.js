@@ -1,12 +1,12 @@
-import { addFriend, listFriends, searchFriends, deleteFriend } from '../services/friendService.js';
+import { addFriend, listFriends, searchFriends } from '../services/friendService.js';
 import { getUserByEmail, getUserByPhone } from '../services/userService.js';
 import { pushNotification } from '../services/notificationService.js';
 
 export async function getFriendsList(req, res, next) {
   try {
-    const userId = req.user?.userId || req.query.userId;
+    const userId = req.user?.userId;
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
     const friends = await listFriends(userId);
     res.json(friends);
@@ -17,12 +17,12 @@ export async function getFriendsList(req, res, next) {
 
 export async function addFriendController(req, res, next) {
   try {
-    const userId = req.user?.userId || req.body.userId;
-    const { friendEmail, friendPhone, friendId } = req.body;
-
+    const userId = req.user?.userId;
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
+
+    const { friendEmail, friendPhone, friendId } = req.body;
 
     let targetFriendId = friendId;
     if (!targetFriendId) {
@@ -39,6 +39,10 @@ export async function addFriendController(req, res, next) {
       return res.status(404).json({ error: 'Friend user not found' });
     }
 
+    if (targetFriendId === userId) {
+      return res.status(400).json({ error: 'Cannot add yourself as a friend' });
+    }
+
     const friendship = await addFriend(userId, targetFriendId);
     await addFriend(targetFriendId, userId); // Reciprocal
 
@@ -50,11 +54,11 @@ export async function addFriendController(req, res, next) {
 
 export async function searchFriendsController(req, res, next) {
   try {
-    const userId = req.user?.userId || req.query.userId;
-    const prefix = req.query.prefix || req.query.q || '';
+    const userId = req.user?.userId;
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
+    const prefix = req.query.prefix || req.query.q || '';
     const friends = await searchFriends(userId, prefix);
     res.json(friends);
   } catch (error) {
@@ -64,8 +68,12 @@ export async function searchFriendsController(req, res, next) {
 
 export async function sendReminderController(req, res, next) {
   try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { friendId, message } = req.body;
-    const userId = req.user?.userId || req.body.userId;
     if (!friendId) {
       return res.status(400).json({ error: 'Friend ID is required' });
     }

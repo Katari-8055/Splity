@@ -8,15 +8,14 @@ import {
 
 export async function getAnalyticsData(req, res, next) {
   try {
-    const userId = req.user?.userId || req.query.userId;
+    const userId = req.user?.userId;
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
     const year = parseInt(req.query.year) || new Date().getFullYear();
 
-    // Execute all 4 queries in parallel for 4x faster analytics loading
     const [categorySpend, monthlySummary, weeklySummary, topCategories] = await Promise.all([
       getSpendByCategory(userId, month, year),
       getMonthlySummary(userId),
@@ -37,9 +36,9 @@ export async function getAnalyticsData(req, res, next) {
 
 export async function getDashboardData(req, res, next) {
   try {
-    const userId = req.user?.userId || req.query.userId;
+    const userId = req.user?.userId;
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const data = await getDashboardOverview(userId);

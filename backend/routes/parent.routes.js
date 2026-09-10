@@ -6,14 +6,14 @@ import {
   getParentNotifications,
   getChildAnalytics
 } from '../controllers/parent.controller.js';
-import { optionalAuth } from '../middlewares/auth.middleware.js';
+import { authenticateToken } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
-router.get('/children', optionalAuth, getChildren);
-router.post('/children', optionalAuth, addChild);
-router.put('/children/:relationshipId', optionalAuth, updateThreshold);
-router.get('/notifications', optionalAuth, getParentNotifications);
-router.get('/analytics/:childId', optionalAuth, getChildAnalytics);
+router.get('/children', authenticateToken, getChildren);
+router.post('/children', authenticateToken, addChild);
+router.put('/children/:relationshipId', authenticateToken, updateThreshold);
+router.get('/notifications', authenticateToken, getParentNotifications);
+router.get('/analytics/:childId', authenticateToken, getChildAnalytics);
 
 export default router;

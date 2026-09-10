@@ -11,12 +11,13 @@ export const AuthProvider = ({ children }) => {
     const savedUser = localStorage.getItem('user');
     const token = localStorage.getItem('token');
     if (savedUser && token) {
-      setUser(JSON.parse(savedUser));
-    } else {
-      // Default fallback demo user if not signed in
-      const demoUser = { id: 'demo-user-id', name: 'Demo User', email: 'demo@example.com', role: 'user' };
-      setUser(demoUser);
-      localStorage.setItem('userId', demoUser.id);
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch {
+        // Corrupted storage — clear it
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+      }
     }
     setLoading(false);
   }, []);

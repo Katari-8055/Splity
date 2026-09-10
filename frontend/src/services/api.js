@@ -2,11 +2,9 @@ const API_BASE = '/api';
 
 async function fetchAPI(endpoint, options = {}) {
   const token = localStorage.getItem('token');
-  const userId = localStorage.getItem('userId') || 'demo-user-id';
 
   const headers = {
     'Content-Type': 'application/json',
-    'x-user-id': userId,
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers
   };
@@ -78,12 +76,10 @@ export const billService = {
     formData.append('receipt', file);
 
     const token = localStorage.getItem('token');
-    const userId = localStorage.getItem('userId') || 'demo-user-id';
 
     const response = await fetch('/api/bills/ocr/upload', {
       method: 'POST',
       headers: {
-        'x-user-id': userId,
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
       body: formData
@@ -96,10 +92,7 @@ export const billService = {
     return response.json();
   },
   getBill: (billId) => fetchAPI(`/bills/${billId}`),
-  getUserBills: () => {
-    const userId = localStorage.getItem('userId') || 'demo-user-id';
-    return fetchAPI(`/bills/user/${userId}`);
-  },
+  getUserBills: () => fetchAPI('/bills/user/me'),
 };
 
 export const parentService = {

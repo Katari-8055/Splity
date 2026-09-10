@@ -3,7 +3,6 @@ import {
   createExpenseWithSplit,
   listExpenses,
   getUserBalances,
-  payExpense,
   settleDebt,
   settleExpenseById
 } from '../services/expenseService.js';
@@ -13,14 +12,18 @@ const aiAssistant = new GeminiExpenseAssistant();
 
 export async function createExpense(req, res, next) {
   try {
-    const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { amount, category, subcategory, description, friendIds, splitType, customSplits, groupId } = req.body;
 
     if (!amount || !category) {
       return res.status(400).json({ error: 'Amount and category are required' });
     }
 
-    if (friendIds && friendIds.length > 0) {
+    if (friendIds && Array.isArray(friendIds) && friendIds.length > 0) {
       const result = await createExpenseWithSplit(
         userId,
         parseFloat(amount),
@@ -51,7 +54,10 @@ export async function createExpense(req, res, next) {
 
 export async function getExpenseHistory(req, res, next) {
   try {
-    const userId = req.user?.userId || req.headers['x-user-id'] || req.query.userId || 'demo-user-id';
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
 
     const filters = {
       category: req.query.category,
@@ -86,7 +92,11 @@ export async function aiSplitExpense(req, res, next) {
 
 export async function settleDebtController(req, res, next) {
   try {
-    const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { friendId, amount, description } = req.body;
 
     if (!friendId) {
@@ -106,9 +116,12 @@ export async function settleDebtController(req, res, next) {
 export async function payExpenseController(req, res, next) {
   try {
     const { id } = req.params;
-    const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
-    const { amount } = req.body;
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
 
+    const { amount } = req.body;
     const payment = await settleExpenseById(id, userId, amount !== undefined ? parseFloat(amount) : null);
     res.json({ success: true, payment });
   } catch (error) {
@@ -118,11 +131,14 @@ export async function payExpenseController(req, res, next) {
 
 export async function getBalancesController(req, res, next) {
   try {
-    const userId = req.user?.userId || req.headers['x-user-id'] || req.query.userId || 'demo-user-id';
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const balances = await getUserBalances(userId);
     res.json(balances);
   } catch (error) {
     next(error);
   }
 }
-

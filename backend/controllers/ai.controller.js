@@ -7,6 +7,11 @@ const assistant = new GeminiExpenseAssistant();
 
 export async function categorize(req, res, next) {
   try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { description, amount } = req.body;
     if (!description || !amount) {
       return res.status(400).json({ error: 'Description and amount required' });
@@ -20,42 +25,44 @@ export async function categorize(req, res, next) {
 
 export async function parseChat(req, res, next) {
   try {
-    const { message, conversationHistory, pendingConfirmation } = req.body;
-    const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
 
-    if (!message) {
+    const { message, conversationHistory, pendingConfirmation } = req.body;
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'Message required' });
     }
 
-    let userContext = {
-      userId: userId || 'demo-user-id',
+    const userContext = {
+      userId,
       userName: 'User',
       friends: [],
       groups: [],
-      conversationHistory: conversationHistory || [],
+      conversationHistory: Array.isArray(conversationHistory) ? conversationHistory : [],
       pendingConfirmation
     };
 
-    if (userId) {
-      // Fetch user profile, friends, and groups in parallel for maximum speed
-      const [userRes, friendsRes, groupsRes] = await Promise.allSettled([
-        getUser(userId),
-        listFriends(userId),
-        listGroups(userId)
-      ]);
+    // Fetch user profile, friends, and groups in parallel for maximum speed
+    const [userRes, friendsRes, groupsRes] = await Promise.allSettled([
+      getUser(userId),
+      listFriends(userId),
+      listGroups(userId)
+    ]);
 
-      if (userRes.status === 'fulfilled' && userRes.value) {
-        userContext.userName = userRes.value.name || 'User';
-      }
-      if (friendsRes.status === 'fulfilled' && friendsRes.value) {
-        userContext.friends = friendsRes.value || [];
-      }
-      if (groupsRes.status === 'fulfilled' && groupsRes.value) {
-        userContext.groups = groupsRes.value || [];
-      }
+    if (userRes.status === 'fulfilled' && userRes.value) {
+      userContext.userName = userRes.value.name || 'User';
+    }
+    if (friendsRes.status === 'fulfilled' && friendsRes.value) {
+      userContext.friends = friendsRes.value || [];
+    }
+    if (groupsRes.status === 'fulfilled' && groupsRes.value) {
+      userContext.groups = groupsRes.value || [];
     }
 
-    const result = await assistant.processUserMessage(message, userContext);
+    const result = await assistant.processUserMessage(message.trim(), userContext);
     res.json(result);
   } catch (error) {
     next(error);

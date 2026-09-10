@@ -47,8 +47,23 @@ export async function getChildrenForParent(parentId) {
   return result.rows;
 }
 
-export async function updateChildThreshold(relationshipId, thresholdAmount) {
+export async function verifyParentChild(parentId, childId) {
+  if (!parentId || !childId) return false;
   const db = await connectToPostgres();
+  const res = await db.query(
+    `SELECT 1 FROM parent_child_relationships WHERE parent_id = $1 AND child_id = $2`,
+    [parentId, childId]
+  );
+  return res.rows.length > 0;
+}
+
+export async function updateChildThreshold(relationshipId, thresholdAmount, parentId = null) {
+  const db = await connectToPostgres();
+  if (parentId) {
+    const query = `UPDATE parent_child_relationships SET threshold_amount = $1 WHERE id = $2 AND parent_id = $3 RETURNING *`;
+    const result = await db.query(query, [thresholdAmount, relationshipId, parentId]);
+    return result.rows[0] || null;
+  }
   const query = `UPDATE parent_child_relationships SET threshold_amount = $1 WHERE id = $2 RETURNING *`;
   const result = await db.query(query, [thresholdAmount, relationshipId]);
   return result.rows[0];

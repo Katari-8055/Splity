@@ -2,9 +2,9 @@ import { listNotifications, acknowledgeNotification, pushNotification } from '..
 
 export async function getNotifications(req, res, next) {
   try {
-    const userId = req.user?.userId || req.query.userId;
+    const userId = req.user?.userId;
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
     const notifications = await listNotifications(userId);
     res.json(notifications);
@@ -15,11 +15,20 @@ export async function getNotifications(req, res, next) {
 
 export async function ackNotification(req, res, next) {
   try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { notificationId } = req.body;
     if (!notificationId) {
       return res.status(400).json({ error: 'Notification ID required' });
     }
-    const updated = await acknowledgeNotification(notificationId);
+
+    const updated = await acknowledgeNotification(notificationId, userId);
+    if (!updated) {
+      return res.status(404).json({ error: 'Notification not found or access denied' });
+    }
     res.json(updated);
   } catch (error) {
     next(error);
@@ -28,11 +37,16 @@ export async function ackNotification(req, res, next) {
 
 export async function createNotification(req, res, next) {
   try {
+    const fromUserId = req.user?.userId;
+    if (!fromUserId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { userId, message, type, data } = req.body;
     if (!userId || !message) {
-      return res.status(400).json({ error: 'User ID and message required' });
+      return res.status(400).json({ error: 'Recipient userId and message are required' });
     }
-    const notif = await pushNotification(userId, message, type, data);
+    const notif = await pushNotification(userId, message, type, { ...data, fromUserId });
     res.status(201).json(notif);
   } catch (error) {
     next(error);

@@ -9,18 +9,21 @@ import {
 
 /**
  * POST /api/bills/ocr/upload
- * 1. Upload image to Cloudinary
- * 2. Use Gemini Vision to extract text from the Cloudinary URL
- * 3. Parse extracted text into structured data
- * 4. Save bill + items to DB for the user
+ * 1. Upload image to Cloudinary (or local fallback)
+ * 2. Use Gemini Vision to extract text
+ * 3. Parse structured data (merchant, total, items)
+ * 4. Save bill + items to DB for the authenticated user
  */
 export async function uploadOCR(req, res, next) {
   try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'No image file uploaded' });
     }
-
-    const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
 
     // Step 1: Run Gemini Vision OCR directly on the uploaded file buffer
     console.log(`[Bills] Running Gemini Vision OCR on ${req.file.originalname} for user ${userId}...`);
@@ -29,7 +32,6 @@ export async function uploadOCR(req, res, next) {
 
     // Step 2: Parse structured data (merchant, total, items)
     const parsedData = await parseBillText(rawText);
-    console.log(`[Bills] Parsed: ${parsedData.merchantName}, $${parsedData.totalAmount}, ${parsedData.items?.length || 0} items`);
 
     // Step 3: Handle Cloudinary storage (with graceful local fallback)
     let imageUrl = null;
@@ -43,20 +45,17 @@ export async function uploadOCR(req, res, next) {
 
     if (isCloudinaryConfigured) {
       try {
-        console.log(`[Bills] Uploading ${req.file.originalname} to Cloudinary...`);
         const cloudinaryResult = await uploadBillToCloudinary(
           req.file.buffer,
           req.file.originalname
         );
         imageUrl = cloudinaryResult.url;
         publicId = cloudinaryResult.publicId;
-        console.log(`[Bills] Cloudinary upload success: ${imageUrl}`);
       } catch (cldErr) {
         console.warn('[Bills] Cloudinary upload warning (falling back to local):', cldErr.message);
       }
     }
 
-    // If Cloudinary wasn't configured or failed, save locally in backend/uploads/bills/
     if (!imageUrl) {
       try {
         const fs = await import('fs');
@@ -71,13 +70,11 @@ export async function uploadOCR(req, res, next) {
         fs.writeFileSync(filePath, req.file.buffer);
         imageUrl = `/uploads/bills/${filename}`;
       } catch (localErr) {
-        console.warn('[Bills] Local file save warning:', localErr.message);
-        // Fallback to data URI so the preview works in frontend
         imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
       }
     }
 
-    // Step 4: Save to DB
+    // Step 4: Save to DB for authenticated user
     const bill = await createBillRecord(
       userId,
       req.file.originalname,
@@ -96,17 +93,28 @@ export async function uploadOCR(req, res, next) {
     });
   } catch (error) {
     console.error('[Bills] Upload OCR error:', error);
-    res.status(500).json({ error: error.message || 'Bill upload and OCR failed' });
+    res.status(500).json({ error: 'Bill upload and OCR failed' });
   }
 }
 
 export async function getBill(req, res, next) {
   try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const { billId } = req.params;
     const bill = await getBillById(billId);
     if (!bill) {
       return res.status(404).json({ error: 'Bill not found' });
     }
+
+    // IDOR protection: Verify ownership
+    if (bill.user_id && bill.user_id !== userId) {
+      return res.status(403).json({ error: 'Forbidden. You do not have permission to view this receipt.' });
+    }
+
     res.json(bill);
   } catch (error) {
     next(error);
@@ -115,10 +123,12 @@ export async function getBill(req, res, next) {
 
 export async function getBillsByUser(req, res, next) {
   try {
-    const userId = req.params.userId || req.headers['x-user-id'];
+    const userId = req.user?.userId;
     if (!userId) {
-      return res.status(400).json({ error: 'User ID required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
+
+    // Always fetch bills for the authenticated user only
     const bills = await getUserBills(userId);
     res.json(bills);
   } catch (error) {
