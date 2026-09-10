@@ -3,7 +3,9 @@ import {
   createExpenseWithSplit,
   listExpenses,
   getUserBalances,
-  payExpense
+  payExpense,
+  settleDebt,
+  settleExpenseById
 } from '../services/expenseService.js';
 import { GeminiExpenseAssistant } from '../services/aiService.js';
 
@@ -82,17 +84,32 @@ export async function aiSplitExpense(req, res, next) {
   }
 }
 
+export async function settleDebtController(req, res, next) {
+  try {
+    const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
+    const { friendId, amount, description } = req.body;
+
+    if (!friendId) {
+      return res.status(400).json({ error: 'friendId is required for debt settlement' });
+    }
+
+    const settlement = await settleDebt(userId, friendId, amount !== undefined ? amount : null, {
+      description: description || 'Settlement Payment'
+    });
+
+    res.json({ success: true, ...settlement });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function payExpenseController(req, res, next) {
   try {
     const { id } = req.params;
     const userId = req.user?.userId || req.headers['x-user-id'] || req.body.userId || 'demo-user-id';
     const { amount } = req.body;
 
-    if (!amount) {
-      return res.status(400).json({ error: 'Amount is required' });
-    }
-
-    const payment = await payExpense(id, userId, parseFloat(amount));
+    const payment = await settleExpenseById(id, userId, amount !== undefined ? parseFloat(amount) : null);
     res.json({ success: true, payment });
   } catch (error) {
     next(error);
@@ -108,3 +125,4 @@ export async function getBalancesController(req, res, next) {
     next(error);
   }
 }
+

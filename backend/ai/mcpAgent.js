@@ -143,8 +143,12 @@ export class SpendSavvyMcpAgent {
       lower === "looks good" ||
       lower === "save" ||
       lower === "settle" ||
-      lower.includes("yes, please") ||
-      lower.includes("confirm this")
+      lower.startsWith("yes") ||
+      lower.includes("confirm") ||
+      lower.includes("proceed") ||
+      lower.includes("save this") ||
+      lower.includes("save expense") ||
+      lower.includes("confirm and save")
     );
   }
 
@@ -192,16 +196,32 @@ export class SpendSavvyMcpAgent {
   }
 
   async executeConfirmedAction(pending, userId, userName) {
-    console.log(`[AI Agent] Executing confirmed mutation: ${pending.action}`, JSON.stringify(pending.toolArgs));
-    const result = await mcpClient.callTool(pending.action, pending.toolArgs, userId);
+    const action = pending.action || "create_expense_with_split";
+    const toolArgs = pending.toolArgs || {
+      userId,
+      amount: parseFloat(pending.amount || 0),
+      category: pending.category || "Food",
+      description: pending.description || "Shared Expense",
+      friendIds: pending.friendIds || [],
+      splitType: pending.splitType || "equal",
+    };
+
+    if (!toolArgs.userId) {
+      toolArgs.userId = userId;
+    }
+
+    console.log(`[AI Agent] Executing confirmed mutation: ${action}`, JSON.stringify(toolArgs));
+    const result = await mcpClient.callTool(action, toolArgs, userId);
 
     if (result.success) {
+      const totalAmount = toolArgs.amount || pending.amount || 0;
+      const desc = toolArgs.description || pending.description || "Shared Expense";
       return {
         type: "expense_split",
         needsConfirmation: false,
         saved: true,
         data: result.data,
-        message: `✅ **Expense Created Successfully!**\n• Description: "${pending.description}"\n• Total: $${parseFloat(pending.amount).toFixed(2)}\n• Your records and friend balances have been updated.`,
+        message: `✅ **Expense Created Successfully!**\n• Description: "${desc}"\n• Total: $${parseFloat(totalAmount).toFixed(2)}\n• Your records and friend balances have been updated.`,
       };
     } else {
       return {
@@ -321,9 +341,15 @@ CORE OPERATIONAL RULES:
         }
       }
 
-      // If no specific friend matched, default to all friends or first friend
-      if (matchedFriendIds.length === 0 && friends.length > 0) {
-        matchedFriendIds.push(friends[0].id);
+      // If no existing friend matched, check for name following 'with' (e.g. "with Balram")
+      if (matchedFriendIds.length === 0) {
+        const withMatch = userMessage.match(/with\s+([a-zA-Z0-9_\-]+)/i);
+        if (withMatch && withMatch[1] && withMatch[1].toLowerCase() !== 'all') {
+          const rawName = withMatch[1].trim();
+          matchedFriendIds.push(`friend-${rawName.toLowerCase()}`);
+        } else if (friends.length > 0) {
+          matchedFriendIds.push(friends[0].id);
+        }
       }
 
       const totalPeople = matchedFriendIds.length + 1;

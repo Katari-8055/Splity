@@ -178,8 +178,9 @@ I can help you manage your expenses, groups, and social finances naturally. Here
 
       const res = await aiService.parseChat(userText, history, currentPending);
 
-      if (res.needsConfirmation && res.data) {
-        setPendingSplit(res.data);
+      if (res.needsConfirmation) {
+        const confirmObj = res.pendingConfirmation || res.data;
+        setPendingSplit(confirmObj);
         setMessages((prev) => [
           ...prev,
           {
@@ -187,7 +188,8 @@ I can help you manage your expenses, groups, and social finances naturally. Here
             sender: 'assistant',
             text: res.message || 'Please review and confirm this expense split:',
             isPendingConfirmation: true,
-            splitData: res.data,
+            splitData: res.data || res.pendingConfirmation,
+            pendingConfirmation: confirmObj,
             resData: res,
             resType: res.type
           }

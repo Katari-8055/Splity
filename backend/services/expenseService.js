@@ -242,63 +242,11 @@ export async function getUserBalances(userId) {
   };
 }
 
+// Re-export canonical settlement domain functions
+export { settleDebt, settleExpenseById } from './settlementService.js';
+
 export async function payExpense(expenseId, userId, amountPaid) {
-  const db = await connectToPostgres();
-  const result = await db.query(
-    `UPDATE expense_splits SET amount = GREATEST(0, amount - $1)
-     WHERE expense_id = $2 AND user_id = $3 RETURNING *`,
-    [amountPaid, expenseId, userId]
-  );
-  return result.rows[0];
-}
-
-export async function settleDebt(userId, friendId, customAmount = null) {
-  const currentBalance = await getFriendBalance(userId, friendId);
-  const amountToSettle = customAmount !== null && customAmount !== undefined 
-    ? Math.abs(parseFloat(customAmount)) 
-    : Math.abs(currentBalance);
-
-  if (amountToSettle <= 0) {
-    return {
-      success: true,
-      settledAmount: 0,
-      currentBalance: 0,
-      message: 'Already all settled up!'
-    };
-  }
-
-  // If user owes friend (currentBalance < 0), user pays friend
-  // If friend owes user (currentBalance > 0), friend pays user
-  if (currentBalance < 0) {
-    await createExpenseWithSplit(
-      userId,
-      amountToSettle,
-      'Settlement',
-      'Settlement Payment',
-      'Settlement Payment',
-      [friendId],
-      'custom',
-      [{ userId: friendId, amount: amountToSettle }]
-    );
-  } else {
-    await createExpenseWithSplit(
-      friendId,
-      amountToSettle,
-      'Settlement',
-      'Settlement Payment',
-      'Settlement Payment',
-      [userId],
-      'custom',
-      [{ userId: userId, amount: amountToSettle }]
-    );
-  }
-
-  const newBalance = await getFriendBalance(userId, friendId);
-  return {
-    success: true,
-    settledAmount: amountToSettle,
-    newBalance,
-    friendId
-  };
+  const { settleExpenseById } = await import('./settlementService.js');
+  return settleExpenseById(expenseId, userId, amountPaid);
 }
 
