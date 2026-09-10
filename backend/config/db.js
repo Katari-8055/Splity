@@ -31,13 +31,15 @@ export async function connectToPostgres() {
     pool = new Pool({
       connectionString: databaseUrl || 'postgresql://postgres:postgres@localhost:5432/expense_splitter',
       ssl: isCloudDb ? { rejectUnauthorized: false } : false,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      max: 10,
+      idleTimeoutMillis: 60000,
+      connectionTimeoutMillis: 30000,
+      query_timeout: 30000,
+      keepAlive: true,
     });
 
     pool.on('error', (err) => {
-      console.error('[PostgreSQL Pool Error]:', err.message);
+      console.warn('[PostgreSQL Pool Warning]:', err.message);
     });
   }
   return pool;

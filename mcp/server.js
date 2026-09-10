@@ -23,8 +23,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { addUser, getUser, getUserByEmail, getUserByPhone, searchAllUsers } from '../backend/services/userService.js';
 import { addFriend, listFriends, searchFriends } from '../backend/services/friendService.js';
-import { createGroup, listGroups, updateGroupMembers } from '../backend/services/groupService.js';
-import { createExpenseWithSplit, listExpenses } from '../backend/services/expenseService.js';
+import { createGroup, listGroups, getGroup, getGroupMembers, updateGroupMembers, getGroupMessages } from '../backend/services/groupService.js';
+import { createExpenseWithSplit, listExpenses, getUserBalances, getFriendBalance, settleDebt, getGroupExpenses } from '../backend/services/expenseService.js';
 import { getSpendByCategory, getMonthlySummary, getFriendContributions, getWeeklySummary, getCategorySpending } from '../backend/services/analyticsService.js';
 import { pushNotification, listNotifications, acknowledgeNotification } from '../backend/services/notificationService.js';
 import { saveReceipt, getReceiptsByExpense } from '../backend/services/billService.js';
@@ -301,6 +301,41 @@ class ExpenseSplitterServer {
               required: ["expenseId"],
             },
           },
+          {
+            name: "get_user_balances",
+            description: "Get net balances and breakdown of debts/owed amounts with all friends for a user",
+            inputSchema: {
+              type: "object",
+              properties: {
+                userId: { type: "string", description: "User ID" },
+              },
+              required: ["userId"],
+            },
+          },
+          {
+            name: "settle_up",
+            description: "Settle debts with a friend by recording a settlement payment in PostgreSQL",
+            inputSchema: {
+              type: "object",
+              properties: {
+                userId: { type: "string", description: "User ID initiating settlement" },
+                friendId: { type: "string", description: "Friend ID to settle with" },
+                amount: { type: "number", description: "Custom amount to settle (optional, settles entire debt if omitted)" },
+              },
+              required: ["userId", "friendId"],
+            },
+          },
+          {
+            name: "get_group_details",
+            description: "Get detailed information about a group including members, expenses, and total spent",
+            inputSchema: {
+              type: "object",
+              properties: {
+                groupId: { type: "string", description: "Group ID" },
+              },
+              required: ["groupId"],
+            },
+          },
         ],
       };
     });
@@ -354,7 +389,7 @@ class ExpenseSplitterServer {
             return { content: [{ type: "text", text: JSON.stringify(friends) }] };
           }
           case "create_expense_with_split": {
-            const { userId, amount, category, subcategory, description, friendIds, splitType } = args;
+            const { userId, amount, category, subcategory, description, friendIds, splitType, groupId } = args;
             const result = await createExpenseWithSplit(
               userId,
               amount,
@@ -362,7 +397,9 @@ class ExpenseSplitterServer {
               subcategory || '',
               description,
               friendIds,
-              splitType || 'equal'
+              splitType || 'equal',
+              null,
+              groupId || null
             );
             return { content: [{ type: "text", text: `Expense created and split successfully: ${JSON.stringify(result)}` }] };
           }
@@ -395,9 +432,11 @@ class ExpenseSplitterServer {
             const { name: groupName, createdBy, members } = args;
             const groupId = uuidv4();
             const group = await createGroup({ id: groupId, name: groupName, createdBy });
-            await updateGroupMembers(groupId, [createdBy, ...members]);
-            for (const memberId of members) {
-              await pushNotification(memberId, `You have been added to group: ${groupName}`);
+            if (members && members.length > 0) {
+              await updateGroupMembers(groupId, [createdBy, ...members]);
+              for (const memberId of members) {
+                await pushNotification(memberId, `You have been added to group: ${groupName}`).catch(() => {});
+              }
             }
             return { content: [{ type: "text", text: `Group created successfully: ${JSON.stringify(group)}` }] };
           }
@@ -406,10 +445,36 @@ class ExpenseSplitterServer {
             const groups = await listGroups(userId);
             return { content: [{ type: "text", text: JSON.stringify(groups) }] };
           }
+          case "get_group_details": {
+            const { groupId } = args;
+            const [group, members, expenses, messages] = await Promise.all([
+              getGroup(groupId),
+              getGroupMembers(groupId),
+              getGroupExpenses(groupId),
+              getGroupMessages(groupId)
+            ]);
+            const totalSpent = expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify({ group, members, expenses, messages, totalSpent })
+              }]
+            };
+          }
           case "get_friend_contributions": {
             const { groupId } = args;
             const contributions = await getFriendContributions(groupId);
             return { content: [{ type: "text", text: JSON.stringify(contributions) }] };
+          }
+          case "get_user_balances": {
+            const { userId } = args;
+            const balances = await getUserBalances(userId);
+            return { content: [{ type: "text", text: JSON.stringify(balances) }] };
+          }
+          case "settle_up": {
+            const { userId, friendId, amount } = args;
+            const settlement = await settleDebt(userId, friendId, amount);
+            return { content: [{ type: "text", text: JSON.stringify(settlement) }] };
           }
           case "list_notifications": {
             const { userId } = args;
@@ -447,15 +512,14 @@ class ExpenseSplitterServer {
   async run() {
     try {
       await initializeDatabase();
-      console.log("Database initialized for MCP server");
+      console.error("[MCP Server] Database initialized successfully");
     } catch (error) {
-      console.error("Failed to initialize database for MCP:", error);
-      process.exit(1);
+      console.error("[MCP Server] Database initialization warning (proceeding):", error.message);
     }
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.log("Expense Splitter MCP server running on stdio");
+    console.error("[MCP Server] SpendSavvy MCP server running on stdio");
   }
 }
 
