@@ -15,6 +15,14 @@ async function fetchAPI(endpoint, options = {}) {
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userId');
+      if (!window.location.pathname.includes('/signin') && !window.location.pathname.includes('/signup')) {
+        window.location.href = '/signin';
+      }
+    }
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `HTTP error ${response.status}`);
   }

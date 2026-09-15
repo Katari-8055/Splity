@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function MainLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = location.pathname;
@@ -13,8 +13,25 @@ export default function MainLayout() {
     navigate('/signin');
   };
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/signin');
+      }
+    }
+  }, [user, authLoading, navigate, pathname]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0b0f17] flex items-center justify-center text-slate-400">
+        <div className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   if (!user && !['/signin', '/signup'].includes(pathname)) {
-    return <Outlet />;
+    return null;
   }
 
   const navItems = [

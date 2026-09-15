@@ -1,7 +1,11 @@
 import React from 'react';
 
 export default function QuickStats({ balanceData, totalSpent = 0, groupCount = 0 }) {
-  const { totalYouOwe = 0, totalYouAreOwed = 0, netBalance = 0 } = balanceData || {};
+  const totalYouOwe = Number(balanceData?.totalYouOwe) || 0;
+  const totalYouAreOwed = Number(balanceData?.totalYouAreOwed) || 0;
+  const netBalance = Number(balanceData?.netBalance) || 0;
+  const numTotalSpent = Number(totalSpent) || 0;
+  const numGroupCount = Number(groupCount) || 0;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -69,10 +73,10 @@ export default function QuickStats({ balanceData, totalSpent = 0, groupCount = 0
         </div>
         <div className="mt-2">
           <span className="text-2xl font-bold text-slate-100 tracking-tight">
-            ${totalSpent.toFixed(2)}
+            ${numTotalSpent.toFixed(2)}
           </span>
         </div>
-        <p className="text-[11px] text-slate-500 mt-1">{groupCount} active group(s)</p>
+        <p className="text-[11px] text-slate-500 mt-1">{numGroupCount} active group(s)</p>
       </div>
     </div>
   );

@@ -1,28 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import QuickStats from '../components/dashboard/QuickStats';
 import RecentActivity from '../components/dashboard/RecentActivity';
 import { analyticsService, expenseService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState({ totalSpent: 0, groupCount: 0, recentExpenses: [] });
   const [balanceData, setBalanceData] = useState({ totalYouOwe: 0, totalYouAreOwed: 0, netBalance: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/signin');
+      return;
+    }
+
     async function loadData() {
       try {
-        const [dashRes, balRes] = await Promise.allSettled([
+        setLoading(true);
+        const [dashRes, balRes] = await Promise.all([
           analyticsService.getDashboard(),
           expenseService.getBalances()
         ]);
 
-        if (dashRes.status === 'fulfilled' && dashRes.value) {
-          setDashboardData(dashRes.value);
+        if (dashRes) {
+          setDashboardData(dashRes);
         }
 
-        if (balRes.status === 'fulfilled' && balRes.value) {
-          setBalanceData(balRes.value);
+        if (balRes) {
+          setBalanceData(balRes);
         }
       } catch (err) {
         console.error('Failed to load dashboard data:', err);
@@ -31,7 +41,18 @@ export default function DashboardPage() {
       }
     }
     loadData();
-  }, []);
+  }, [navigate]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center space-y-3">
+          <div className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+          <p className="text-xs text-slate-400 font-medium">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">

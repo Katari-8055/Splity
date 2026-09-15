@@ -13,9 +13,4 @@ router.get('/user/me', authenticateToken, getBillsByUser);
 router.get('/user/:userId', authenticateToken, getBillsByUser);
 router.get('/:billId', authenticateToken, getBill);
 
-// Compatibility aliases
-router.get('/bills/user/me', authenticateToken, getBillsByUser);
-router.get('/bills/user/:userId', authenticateToken, getBillsByUser);
-router.get('/bills/:billId', authenticateToken, getBill);
-
 export default router;
