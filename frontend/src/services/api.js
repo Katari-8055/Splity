@@ -111,9 +111,58 @@ export const parentService = {
   getChildAnalytics: (childId) => fetchAPI(`/parent/analytics/${childId}`),
 };
 
+/**
+ * Stream one chat turn over Server-Sent Events.
+ * onEvent receives: conversation, token, tool_start, tool_end, confirmation, done, error.
+ */
+async function streamChat({ message, conversationId, onEvent, signal }) {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_BASE}/ai/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ message, ...(conversationId ? { conversationId } : {}) }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP error ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary;
+    while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const dataLine = frame.split('\n').find((l) => l.startsWith('data: '));
+      if (dataLine) onEvent(JSON.parse(dataLine.slice(6)));
+    }
+  }
+}
+
 export const aiService = {
-  parseChat: (message, conversationHistory, pendingConfirmation) =>
-    fetchAPI('/ai/parse', { method: 'POST', body: JSON.stringify({ message, conversationHistory, pendingConfirmation }) }),
+  streamChat,
+  confirmAction: (actionId) => fetchAPI(`/ai/actions/${actionId}/confirm`, { method: 'POST' }),
+  cancelAction: (actionId) => fetchAPI(`/ai/actions/${actionId}/cancel`, { method: 'POST' }),
+  pendingActions: () => fetchAPI('/ai/actions'),
+  conversationMessages: (conversationId) => fetchAPI(`/ai/conversations/${conversationId}/messages`),
   categorize: (description, amount) =>
     fetchAPI('/ai/categorize', { method: 'POST', body: JSON.stringify({ description, amount }) }),
+};
+
+export const aiOpsService = {
+  access: () => fetchAPI('/ai/ops/me'),
+  summary: (days = 7) => fetchAPI(`/ai/ops/summary?days=${days}`),
+  traces: ({ status = '', order = 'recent', limit = 20 } = {}) =>
+    fetchAPI(`/ai/ops/traces?order=${order}&limit=${limit}${status ? `&status=${status}` : ''}`),
+  trace: (id) => fetchAPI(`/ai/ops/traces/${id}`),
 };

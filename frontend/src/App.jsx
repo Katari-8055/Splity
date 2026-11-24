@@ -12,6 +12,7 @@ import AddExpensePage from './pages/AddExpensePage';
 import BillsPage from './pages/BillsPage';
 import InsightsPage from './pages/InsightsPage';
 import ChatPage from './pages/ChatPage';
+import AIOpsPage from './pages/AIOpsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ChildMonitoringPage from './pages/ChildMonitoringPage';
 import ChildAnalyticsPage from './pages/ChildAnalyticsPage';
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/bills" element={<BillsPage />} />
             <Route path="/insights" element={<InsightsPage />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/ai-ops" element={<AIOpsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/child-monitoring" element={<ChildMonitoringPage />} />
             <Route path="/child-analytics" element={<ChildAnalyticsPage />} />

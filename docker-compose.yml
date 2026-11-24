@@ -1,0 +1,23 @@
+# Local infrastructure for the Python API.
+#   docker compose up -d db
+# pgvector is included now so the RAG phase needs no database change.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: splity
+      POSTGRES_PASSWORD: splity
+      POSTGRES_DB: splity
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./api/scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U splity"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
