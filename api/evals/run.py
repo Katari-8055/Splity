@@ -34,6 +34,8 @@ from evals.world import World, build_world
 ROOT = Path(__file__).resolve().parent
 API_ROOT = ROOT.parent
 SUITES = ("agent", "sql", "rag", "redteam")
+DELAY_SECONDS = 0.0  # pause between cases (free-tier rate limits); set by --delay
+ONLY_IDS: set[str] = set()  # run only these case ids; set by --ids
 
 
 def load(name: str) -> list[dict]:
@@ -62,6 +64,8 @@ async def reset_database(url: str) -> None:
 async def chat_cases(http: AsyncClient, token: str, cases: list[dict], label: str) -> list[dict]:
     results = []
     for n, case in enumerate(cases, start=1):
+        if n > 1 and DELAY_SECONDS:
+            await asyncio.sleep(DELAY_SECONDS)
         started = time.perf_counter()
         res = await http.post(
             "/api/ai/chat?stream=false",
@@ -91,6 +95,8 @@ async def chat_cases(http: AsyncClient, token: str, cases: list[dict], label: st
 async def sql_suite(factory, llm, world: World, cases: list[dict]) -> list[dict]:
     results = []
     for n, case in enumerate(cases, start=1):
+        if n > 1 and DELAY_SECONDS:
+            await asyncio.sleep(DELAY_SECONDS)
         async with factory() as session:
             started = time.perf_counter()
             entry = {"id": case["id"], "question": case["question"]}
@@ -131,6 +137,8 @@ async def rag_suite(factory, llm, http, token, world: World, cases: list[dict]) 
 
     results = []
     for n, case in enumerate(cases, start=1):
+        if n > 1 and DELAY_SECONDS:
+            await asyncio.sleep(DELAY_SECONDS)
         async with factory() as session:
             hits = await search(session, llm, world.me.id, case["query"], k=5)
         ids = [h.source_id for h in hits]
@@ -334,7 +342,9 @@ async def run_model(model: str, suites: list[str], limit: int | None, url: str) 
     results: dict = {}
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://eval", timeout=300) as http:
-            take = (lambda xs: xs[:limit]) if limit else (lambda xs: xs)
+            def take(xs: list[dict]) -> list[dict]:
+                xs = [c for c in xs if not ONLY_IDS or c["id"] in ONLY_IDS]
+                return xs[:limit] if limit else xs
             if "agent" in suites:
                 results["agent"] = await chat_cases(http, token, take(load("agent")), "agent")
             if "redteam" in suites:
@@ -355,11 +365,16 @@ async def main() -> None:
     parser.add_argument("--suite", nargs="+", choices=[*SUITES, "all"], default=["all"])
     parser.add_argument("--models", nargs="+", default=[get_settings().llm_model])
     parser.add_argument("--limit", type=int, default=None, help="max cases per suite (quick runs)")
+    parser.add_argument("--ids", nargs="+", default=[], help="run only these case ids")
+    parser.add_argument("--delay", type=float, default=0.0, help="seconds to wait between cases (rate limits)")
     args = parser.parse_args()
 
     url = os.environ.get("EVAL_DATABASE_URL")
     if not url:
         raise SystemExit("Set EVAL_DATABASE_URL to a disposable database (its schema is dropped).")
+    global DELAY_SECONDS
+    DELAY_SECONDS = args.delay
+    ONLY_IDS.update(args.ids)
     suites = list(SUITES) if "all" in args.suite else args.suite
 
     runs = [await run_model(m, suites, args.limit, url) for m in args.models]

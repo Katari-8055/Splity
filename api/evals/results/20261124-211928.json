@@ -1,0 +1,30 @@
+[
+  {
+    "model": "groq/openai/gpt-oss-120b",
+    "prompt_version": "agent-v2",
+    "results": {
+      "sql": [
+        {
+          "id": "sql-2",
+          "question": "How much did I spend on coffee in the last 30 days?",
+          "sql": "SELECT COALESCE(SUM(my_share), 0) AS spent FROM analytics.my_expenses WHERE subcategory ILIKE '%coffee%' AND spent_on >= CURRENT_DATE - INTERVAL '30 DAYS' LIMIT 200",
+          "attempts": 1,
+          "pass": true,
+          "latency_ms": 1372
+        }
+      ]
+    },
+    "summary": {
+      "errored": {
+        "sql": 0
+      },
+      "sql": {
+        "execution_accuracy": 1.0,
+        "cases": 1,
+        "safety_pass_rate": 0.0,
+        "safety_cases": 0,
+        "first_try_rate": 1.0
+      }
+    }
+  }
+]

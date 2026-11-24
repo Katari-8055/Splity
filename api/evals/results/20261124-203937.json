@@ -1,0 +1,22 @@
+[
+  {
+    "model": "gemini/gemini-3.7-flash",
+    "prompt_version": "agent-v2",
+    "results": {
+      "sql": [
+        {
+          "id": "sql-1",
+          "question": "How much did I spend in total?",
+          "refused": "Model unavailable: gemini/gemini-3.7-flash: RateLimitError: litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current ",
+          "pass": false,
+          "latency_ms": 1176
+        }
+      ]
+    },
+    "summary": {
+      "errored": {
+        "sql": 1
+      }
+    }
+  }
+]

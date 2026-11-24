@@ -1,0 +1,22 @@
+[
+  {
+    "model": "groq/llama-3.3-70b-versatile",
+    "prompt_version": "agent-v2",
+    "results": {
+      "sql": [
+        {
+          "id": "sql-2",
+          "question": "How much did I spend on coffee in the last 30 days?",
+          "refused": "Model unavailable: groq/llama-3.3-70b-versatile: NotFoundError: litellm.NotFoundError: GroqException - {\"error\":{\"message\":\"The model `llama-3.3-70b-versatile` does not exist or you do not have access",
+          "pass": false,
+          "latency_ms": 943
+        }
+      ]
+    },
+    "summary": {
+      "errored": {
+        "sql": 1
+      }
+    }
+  }
+]
