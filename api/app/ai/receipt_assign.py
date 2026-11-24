@@ -41,7 +41,12 @@ class _Result(BaseModel):
 
 
 async def assign_items(
-    session: AsyncSession, llm: LLMClient, ctx: ToolContext, receipt: Receipt, items: list[ReceiptItem], instruction: str
+    session: AsyncSession,
+    llm: LLMClient,
+    ctx: ToolContext,
+    receipt: Receipt,
+    items: list[ReceiptItem],
+    instruction: str,
 ) -> dict:
     friends = await friends_service.list_friends(session, ctx.user.id)
     listing = "\n".join(f"{n}. {i.name} x{i.quantity:g} = {i.amount}" for n, i in enumerate(items, start=1))

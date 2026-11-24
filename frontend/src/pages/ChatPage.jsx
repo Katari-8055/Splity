@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { aiService, friendService } from '../services/api';
+import { aiService, friendService, voiceService } from '../services/api';
 
 const CONVERSATION_KEY = 'splity.conversationId';
 
@@ -13,6 +13,10 @@ const TOOL_LABELS = {
   get_group: 'Opening the group',
   spending_summary: 'Adding up your spending',
   list_notifications: 'Checking notifications',
+  ask_analytics: 'Querying your data',
+  search_documents: 'Searching receipts & chats',
+  list_receipts: 'Loading receipts',
+  split_receipt: 'Preparing the receipt split',
   create_expense: 'Preparing the expense',
   settle_up: 'Preparing the settlement',
   create_group: 'Preparing the group',
@@ -56,7 +60,9 @@ const markdownComponents = {
 
 function ToolChips({ tools }) {
   if (!tools?.length) return null;
+  const queries = tools.filter((t) => t.sql);
   return (
+    <>
     <div className="flex flex-wrap gap-1.5 mb-2">
       {tools.map((t, i) => (
         <span
@@ -73,6 +79,13 @@ function ToolChips({ tools }) {
         </span>
       ))}
     </div>
+    {queries.map((t, i) => (
+      <details key={i} className="mb-2 text-[11px] text-slate-400">
+        <summary className="cursor-pointer">Show the SQL it ran</summary>
+        <pre className="mt-1 p-2 bg-[#0c101a] border border-[#222c42] rounded whitespace-pre-wrap text-indigo-200">{t.sql}</pre>
+      </details>
+    ))}
+    </>
   );
 }
 
@@ -82,6 +95,11 @@ function ConfirmationCard({ card, onConfirm, onCancel }) {
   return (
     <div className="mt-2 rounded-xl border border-indigo-500/30 bg-indigo-950/30 p-3 text-xs">
       <div className="font-semibold text-indigo-200 mb-1">Review before saving</div>
+      {card.tainted && (
+        <div className="mb-2 p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200">
+          This was suggested after reading receipts or messages written by others. Make sure it is what you asked for.
+        </div>
+      )}
       <div className="text-slate-200">{card.summary}</div>
       {breakdown && (
         <table className="mt-2 w-full text-slate-300">
@@ -149,6 +167,56 @@ function useMentionSuggestions(input) {
   return suggestions;
 }
 
+function speak(text) {
+  if (!('speechSynthesis' in window) || !text) return;
+  const plain = text.replace(/[*_`#>]/g, '').replace(/\[[^\]]*\]/g, '');
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(plain);
+  utterance.lang = /[ऀ-ॿ]/.test(plain) ? 'hi-IN' : 'en-IN';
+  window.speechSynthesis.speak(utterance);
+}
+
+/** Record a voice note, send it for transcription, and put the text in the input box for review. */
+function useVoiceInput(onText, onError) {
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recorderRef = useRef(null);
+
+  async function start() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        setTranscribing(true);
+        try {
+          const res = await voiceService.transcribe(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+          onText(res.text);
+        } catch (err) {
+          onError(err.message);
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      recorder.start();
+      recorderRef.current = recorder;
+      setRecording(true);
+      setTimeout(() => recorder.state === 'recording' && recorder.stop(), 30000); // 30 s cap
+    } catch {
+      onError('Microphone not available. Check the browser permission.');
+    }
+  }
+
+  function stop() {
+    recorderRef.current?.stop();
+  }
+
+  return { recording, transcribing, start, stop };
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState([WELCOME]);
   const [input, setInput] = useState('');
@@ -157,6 +225,15 @@ export default function ChatPage() {
   const [pending, setPending] = useState([]);
   const endRef = useRef(null);
   const suggestions = useMentionSuggestions(input);
+  const [readAloud, setReadAloud] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
+  const voice = useVoiceInput(
+    (text) => {
+      setVoiceError('');
+      setInput((prev) => (prev ? `${prev} ${text}` : text));
+    },
+    setVoiceError,
+  );
 
   useEffect(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), [messages]);
 
@@ -218,15 +295,19 @@ export default function ChatPage() {
               patchMessage(replyId, (m) => {
                 const tools = [...m.tools];
                 const idx = tools.map((t) => t.name).lastIndexOf(event.name);
-                if (idx >= 0) tools[idx] = { ...tools[idx], state: 'done', ok: event.ok };
+                if (idx >= 0) tools[idx] = { ...tools[idx], state: 'done', ok: event.ok, sql: event.sql };
                 return { tools };
               });
+              break;
+            case 'guardrail':
+              patchMessage(replyId, { guardrail: true });
               break;
             case 'confirmation':
               patchMessage(replyId, { confirmation: { ...event, status: 'pending' } });
               break;
             case 'done':
               patchMessage(replyId, { text: event.message, streaming: false });
+              if (readAloud) speak(event.message);
               break;
             case 'error':
               patchMessage(replyId, { text: event.message, streaming: false, error: true });
@@ -287,9 +368,20 @@ export default function ChatPage() {
             <p className="text-[11px] text-slate-400">Answers come from your live data. Changes need your confirmation.</p>
           </div>
         </div>
-        <button onClick={newChat} className="text-xs px-3 py-1.5 rounded-lg border border-[#2a3550] text-slate-300 hover:bg-[#1a2235]">
-          New chat
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setReadAloud((v) => !v);
+              window.speechSynthesis?.cancel();
+            }}
+            className={`text-xs px-3 py-1.5 rounded-lg border ${readAloud ? 'border-indigo-500 text-indigo-200' : 'border-[#2a3550] text-slate-300'}`}
+          >
+            {readAloud ? 'Read aloud: on' : 'Read aloud: off'}
+          </button>
+          <button onClick={newChat} className="text-xs px-3 py-1.5 rounded-lg border border-[#2a3550] text-slate-300 hover:bg-[#1a2235]">
+            New chat
+          </button>
+        </div>
       </div>
 
       {pending.length > 0 && (
@@ -322,6 +414,11 @@ export default function ChatPage() {
               }`}
             >
               {m.role === 'assistant' && <ToolChips tools={m.tools} />}
+              {m.guardrail && (
+                <div className="mb-2 text-[11px] text-amber-300">
+                  Some content looked like hidden instructions to the AI and was ignored.
+                </div>
+              )}
               {m.role === 'assistant' ? (
                 m.text ? (
                   <ReactMarkdown components={markdownComponents}>{m.text}</ReactMarkdown>
@@ -378,7 +475,19 @@ export default function ChatPage() {
             ))}
           </div>
         )}
+        {voiceError && <div className="mb-2 text-xs text-amber-300">{voiceError}</div>}
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={voice.recording ? voice.stop : voice.start}
+            disabled={voice.transcribing || busy}
+            title="Speak (English, Hindi or Hinglish)"
+            className={`px-3 rounded-xl border text-sm ${
+              voice.recording ? 'border-rose-500 bg-rose-500/20 text-rose-200 animate-pulse' : 'border-[#222c42] text-slate-300'
+            } disabled:opacity-50`}
+          >
+            {voice.transcribing ? '…' : voice.recording ? 'Stop' : 'Mic'}
+          </button>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}

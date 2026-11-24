@@ -1,5 +1,6 @@
 """Receipts: storage, OCR, and turning a receipt into a per-item split expense."""
 
+import asyncio
 import math
 import uuid
 from decimal import Decimal
@@ -8,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai import rag
 from app.ai.llm import LLMClient
 from app.ai.ocr import read_receipt, sniff_image
 from app.core.config import get_settings
@@ -19,10 +21,12 @@ from app.services.splitting import from_cents, to_cents
 EXTENSIONS = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 
-def _storage_root() -> Path:
+def _store(data: bytes, extension: str) -> Path:
     root = Path(get_settings().upload_dir).resolve() / "receipts"
     root.mkdir(parents=True, exist_ok=True)
-    return root
+    path = root / f"{uuid.uuid4()}{extension}"
+    path.write_bytes(data)
+    return path
 
 
 async def upload_and_parse(
@@ -35,8 +39,7 @@ async def upload_and_parse(
         raise BadRequest("Upload a JPEG, PNG or WebP image")
 
     # Random server-side name: the user's filename is never used as a path.
-    path = _storage_root() / f"{uuid.uuid4()}{EXTENSIONS[mime]}"
-    path.write_bytes(data)
+    path = await asyncio.to_thread(_store, data, EXTENSIONS[mime])
 
     parsed, issues = await read_receipt(llm, data, mime)
     receipt = Receipt(
@@ -71,6 +74,8 @@ async def upload_and_parse(
         ]
         session.add_all(items)
     await session.commit()
+    if parsed:
+        rag.schedule_index("receipt", receipt.id)
     return receipt, items
 
 

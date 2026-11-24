@@ -1,6 +1,7 @@
 import pytest
 
 from app.ai.llm import Completion, ToolCall, Usage, say
+from app.ai.prompts import PROMPT_VERSION
 from app.core.config import get_settings
 from tests.helpers import befriend, signup
 
@@ -45,7 +46,7 @@ async def test_every_chat_turn_writes_an_ordered_trace(client, use_llm, admin):
     assert trace["prompt_tokens"] == 2000 and trace["completion_tokens"] == 35
     assert float(trace["cost_usd"]) == pytest.approx(0.0009)
     assert [s["kind"] for s in trace["spans"]] == ["llm", "tool", "llm"]
-    assert trace["prompt_version"] == "agent-v1"
+    assert trace["prompt_version"] == PROMPT_VERSION
     assert trace["input_preview"] == "who owes me?"
 
 

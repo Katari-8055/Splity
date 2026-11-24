@@ -21,6 +21,7 @@ from sqlalchemy import pool, text  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
 from app.ai.llm import ScriptedLLM, set_llm_override  # noqa: E402
+from app.ai.rag import enable_background_indexing  # noqa: E402
 from app.api.routes.ai import ai_limiter  # noqa: E402
 from app.core.rate_limit import login_limiter  # noqa: E402
 from app.db.models import Base  # noqa: E402
@@ -81,6 +82,7 @@ async def client(db_sessionmaker) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_session_factory] = lambda: db_sessionmaker
     login_limiter.reset()
     ai_limiter.reset()
+    enable_background_indexing(None)  # tests index explicitly, never against the dev database
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", timeout=30) as http:
         yield http
     app.dependency_overrides.clear()

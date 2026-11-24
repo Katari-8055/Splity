@@ -159,6 +159,43 @@ export const aiService = {
     fetchAPI('/ai/categorize', { method: 'POST', body: JSON.stringify({ description, amount }) }),
 };
 
+async function uploadForm(endpoint, field, file) {
+  const formData = new FormData();
+  formData.append(field, file);
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Upload failed (${response.status})`);
+  }
+  return response.json();
+}
+
+/** Images are behind auth, so <img src> can't load them directly: fetch as a blob URL. */
+async function authedBlobUrl(path) {
+  const token = localStorage.getItem('token');
+  const response = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!response.ok) throw new Error('Image not available');
+  return URL.createObjectURL(await response.blob());
+}
+
+export const receiptService = {
+  upload: (file) => uploadForm('/receipts', 'receipt', file),
+  list: () => fetchAPI('/receipts'),
+  get: (id) => fetchAPI(`/receipts/${id}`),
+  imageUrl: (receipt) => authedBlobUrl(receipt.imageUrl),
+  assign: (id, instruction) => fetchAPI(`/receipts/${id}/assign`, { method: 'POST', body: JSON.stringify({ instruction }) }),
+  split: (id, assignments) => fetchAPI(`/receipts/${id}/split`, { method: 'POST', body: JSON.stringify({ assignments }) }),
+};
+
+export const voiceService = {
+  transcribe: (blob) => uploadForm('/ai/transcribe', 'audio', new File([blob], 'voice.webm', { type: blob.type })),
+};
+
 export const aiOpsService = {
   access: () => fetchAPI('/ai/ops/me'),
   summary: (days = 7) => fetchAPI(`/ai/ops/summary?days=${days}`),

@@ -147,7 +147,8 @@ _SAFE_NODES = tuple(getattr(exp, n) for n in _SAFE_NODE_NAMES if hasattr(exp, n)
 
 def _is_builtin_operator(func: exp.Func) -> bool:
     """sqlglot models CASE, CAST, aggregates and date maths as Func nodes; those are safe."""
-    return isinstance(func, _SAFE_NODES)
+    # Operators (AND, OR, =, LIKE, NOT, +, ...) are also Func subclasses in sqlglot.
+    return isinstance(func, _SAFE_NODES + (exp.Binary, exp.Unary, exp.Connector, exp.Predicate))
 
 
 @dataclass

@@ -1,0 +1,67 @@
+# Agent behaviour: tool routing, argument extraction, clarification, ambiguity.
+# expect keys:
+#   tools_any: at least one of these tools was called
+#   tools_none: none of these tools was called
+#   proposal: the change proposed for confirmation (tool name)
+#   args: subset of the proposal's arguments (numbers equal; strings/lists match case-insensitively by containment)
+#   clarify: true → no proposal, and the reply asks a question
+#   no_write: true → no proposal
+#   contains_any / not_contains: checks on the final reply
+
+# ── balances ───────────────────────────────────────────────────────────────────
+- {id: bal-en-1, category: balances, lang: en, input: "Who owes me money?", expect: {tools_any: [get_balances], no_write: true}}
+- {id: bal-en-2, category: balances, lang: en, input: "Do I owe Ram Singh anything?", expect: {tools_any: [get_balances], no_write: true, contains_any: ["200"]}}
+- {id: bal-hi-1, category: balances, lang: hi, input: "मुझे किसने पैसे देने हैं?", expect: {tools_any: [get_balances], no_write: true}}
+- {id: bal-hg-1, category: balances, lang: hinglish, input: "Rahul ka kitna baaki hai mere upar?", expect: {tools_any: [get_balances], no_write: true}}
+- {id: bal-hg-2, category: balances, lang: hinglish, input: "mera total hisaab batao, kisko dena hai kisse lena hai", expect: {tools_any: [get_balances], no_write: true}}
+
+# ── analytics (should route to text-to-SQL) ───────────────────────────────────
+- {id: ana-en-1, category: analytics, lang: en, input: "How much did I spend on coffee this month?", expect: {tools_any: [ask_analytics, spending_summary], no_write: true}}
+- {id: ana-en-2, category: analytics, lang: en, input: "Compare my spending this month vs last month", expect: {tools_any: [ask_analytics], no_write: true}}
+- {id: ana-en-3, category: analytics, lang: en, input: "Do I spend more on weekends or weekdays?", expect: {tools_any: [ask_analytics], no_write: true}}
+- {id: ana-en-4, category: analytics, lang: en, input: "What was my biggest expense in the last 30 days?", expect: {tools_any: [ask_analytics, list_expenses], no_write: true}}
+- {id: ana-en-5, category: analytics, lang: en, input: "Which friend do I share the most expenses with?", expect: {tools_any: [ask_analytics], no_write: true}}
+- {id: ana-hi-1, category: analytics, lang: hi, input: "पिछले महीने मैंने खाने पर कितना खर्च किया?", expect: {tools_any: [ask_analytics, spending_summary], no_write: true}}
+- {id: ana-hg-1, category: analytics, lang: hinglish, input: "is mahine rent pe kitna gaya?", expect: {tools_any: [ask_analytics, spending_summary], no_write: true}}
+- {id: ana-hg-2, category: analytics, lang: hinglish, input: "Goa trip mein mera total kharcha kitna hua?", expect: {tools_any: [ask_analytics, get_group], no_write: true}}
+
+# ── document search (RAG) ──────────────────────────────────────────────────────
+- {id: rag-en-1, category: rag, lang: en, input: "What did I order at Barbeque Nation?", expect: {tools_any: [search_documents], no_write: true, contains_any: ["Paneer", "Naan", "Beer"]}}
+- {id: rag-en-2, category: rag, lang: en, input: "What did we decide about splitting the Airbnb?", expect: {tools_any: [search_documents, get_group], no_write: true, contains_any: ["equal"]}}
+- {id: rag-hg-1, category: rag, lang: hinglish, input: "Goa wali flight kitne baje thi?", expect: {tools_any: [search_documents, get_group], no_write: true, contains_any: ["6"]}}
+- {id: rag-en-3, category: rag, lang: en, input: "When is the wifi bill due according to Amit?", expect: {tools_any: [search_documents, get_group], no_write: true, contains_any: ["5"]}}
+
+# ── proposing changes (argument extraction) ───────────────────────────────────
+- {id: split-en-1, category: write, lang: en, input: "Split 600 for dinner with Rahul and Priya", expect: {proposal: create_expense, args: {amount: 600, participants: [Rahul, Priya]}}}
+- {id: split-en-2, category: write, lang: en, input: "I paid 1500 for groceries, split it with Amit", expect: {proposal: create_expense, args: {amount: 1500, participants: [Amit], category: Groceries}}}
+- {id: split-en-3, category: write, lang: en, input: "Add 3000 for the Goa villa to the Goa Trip group", expect: {proposal: create_expense, args: {amount: 3000, group: Goa}}}
+- {id: split-en-4, category: write, lang: en, input: "Rent is 20000, I pay 60% and Amit pays 40%", expect: {proposal: create_expense, args: {amount: 20000, split_type: percentage}}}
+- {id: split-hg-1, category: write, lang: hinglish, input: "300 ka pizza Rahul aur Priya ke saath baant do", expect: {proposal: create_expense, args: {amount: 300, participants: [Rahul, Priya]}}}
+- {id: split-hg-2, category: write, lang: hinglish, input: "maine 450 ki cab li Rahul ke saath, add kar do", expect: {proposal: create_expense, args: {amount: 450, participants: [Rahul]}}}
+- {id: split-hi-1, category: write, lang: hi, input: "प्रिया के साथ 800 रुपये का खाना बांट दो", expect: {proposal: create_expense, args: {amount: 800, participants: [Priya]}}}
+- {id: personal-en-1, category: write, lang: en, input: "Log 250 I spent on a book, just for me", expect: {proposal: create_expense, args: {amount: 250}}}
+- {id: settle-en-1, category: write, lang: en, input: "Rahul paid me back, settle up with him", expect: {proposal: settle_up, args: {friend: Rahul}}}
+- {id: settle-en-2, category: write, lang: en, input: "I paid Ram Singh 100 for the lunch", expect: {proposal: settle_up, args: {friend: Ram Singh, amount: 100}}}
+- {id: settle-hg-1, category: write, lang: hinglish, input: "Amit ke saath hisaab clear kar do", expect: {proposal: settle_up, args: {friend: Amit}}}
+- {id: group-en-1, category: write, lang: en, input: "Create a group called Manali Trip with Rahul and Ram Kumar", expect: {proposal: create_group, args: {name: Manali, members: [Rahul, Ram Kumar]}}}
+- {id: group-hg-1, category: write, lang: hinglish, input: "Rahul, Priya aur Amit ke saath 'Office Lunch' naam ka group bana do", expect: {proposal: create_group, args: {name: Office Lunch}}}
+- {id: msg-en-1, category: write, lang: en, input: "Post 'Pack sunscreen!' in the Goa Trip group", expect: {proposal: post_group_message, args: {group: Goa, message: sunscreen}}}
+- {id: friend-en-1, category: write, lang: en, input: "Add kabir.rao@eval.splity as my friend", expect: {proposal: add_friend, args: {email: kabir.rao@eval.splity}}}
+- {id: receipt-en-1, category: write, lang: en, input: "Split my Barbeque Nation receipt: I had the paneer and the beers, Rahul and Priya shared the naan and gulab jamun", expect: {proposal: split_receipt}}
+
+# ── clarification: never guess amounts or people ───────────────────────────────
+- {id: clar-en-1, category: clarify, lang: en, input: "Split the dinner with Rahul", expect: {clarify: true}}
+- {id: clar-en-2, category: clarify, lang: en, input: "Split 900", expect: {clarify: true}}
+- {id: clar-en-3, category: clarify, lang: en, input: "Add an expense", expect: {clarify: true}}
+- {id: clar-hg-1, category: clarify, lang: hinglish, input: "Priya ke saath bill baant do", expect: {clarify: true}}
+- {id: clar-hi-1, category: clarify, lang: hi, input: "500 रुपये बांट दो", expect: {clarify: true}}
+
+# ── ambiguity and unknown people ───────────────────────────────────────────────
+- {id: amb-en-1, category: ambiguity, lang: en, input: "Settle up with Ram", expect: {no_write: true, contains_any: ["Ram Kumar", "Ram Singh", "which"]}}
+- {id: amb-en-2, category: ambiguity, lang: en, input: "Split 400 with Ram", expect: {no_write: true, contains_any: ["Ram Kumar", "Ram Singh", "which"]}}
+- {id: unk-en-1, category: ambiguity, lang: en, input: "Split 500 with Balram", expect: {no_write: true}}
+- {id: unk-hg-1, category: ambiguity, lang: hinglish, input: "Zoya ke saath 700 split karo", expect: {no_write: true}}
+
+# ── out of scope ───────────────────────────────────────────────────────────────
+- {id: oos-en-1, category: scope, lang: en, input: "Write me a poem about the ocean", expect: {no_write: true, tools_none: [create_expense, settle_up]}}
+- {id: oos-en-2, category: scope, lang: en, input: "What's the capital of France?", expect: {no_write: true}}

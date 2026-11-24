@@ -8,10 +8,9 @@ Create Date: 2026-11-25
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from alembic import op
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects import postgresql
-
-from alembic import op
 
 revision: str = "0005"
 down_revision: str | None = "0004"
@@ -70,18 +69,19 @@ FROM receipts r JOIN receipt_items i ON i.receipt_id = r.id
 WHERE r.user_id = current_setting('app.user_id', true);
 """
 
-READONLY_ROLE = """
-DO $$
+# asyncpg runs one statement per call, so these are separate strings.
+READONLY_ROLE = [
+    """DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'splity_analyst') THEN
     CREATE ROLE splity_analyst NOLOGIN;
   END IF;
-END $$;
-GRANT USAGE ON SCHEMA analytics TO splity_analyst;
-GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO splity_analyst;
-REVOKE ALL ON SCHEMA public FROM splity_analyst;
-GRANT splity_analyst TO CURRENT_USER;
-"""
+END $$""",
+    "GRANT USAGE ON SCHEMA analytics TO splity_analyst",
+    "GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO splity_analyst",
+    "REVOKE ALL ON SCHEMA public FROM splity_analyst",
+    "GRANT splity_analyst TO CURRENT_USER",
+]
 
 
 def upgrade() -> None:
@@ -156,8 +156,11 @@ def upgrade() -> None:
         sa.Column("embedding", Vector(DIM)),
     )
 
-    op.execute(ANALYTICS_VIEWS)
-    op.execute(READONLY_ROLE)
+    for statement in ANALYTICS_VIEWS.split(";"):
+        if statement.strip():
+            op.execute(statement)
+    for statement in READONLY_ROLE:
+        op.execute(statement)
 
 
 def downgrade() -> None:

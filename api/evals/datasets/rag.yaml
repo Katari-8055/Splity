@@ -1,0 +1,14 @@
+# Retrieval quality: is the expected source in the top-k (hit@k), and how high (MRR)?
+# Then answer quality: the agent's reply must contain the keywords and be judged faithful to the retrieved text.
+# expected_source refers to world.refs keys (see evals/world.py).
+
+- {id: rag-1, query: "What did I order at Barbeque Nation?", expected_source: "receipt:Barbeque Nation", keywords: ["Paneer"]}
+- {id: rag-2, query: "What drinks were on the Barbeque Nation bill?", expected_source: "receipt:Barbeque Nation", keywords: ["Beer"]}
+- {id: rag-3, query: "What did I get at Starbucks?", expected_source: "receipt:Starbucks", keywords: ["Latte"]}
+- {id: rag-4, query: "How are we splitting the Airbnb and scooters?", expected_source: "message:Let's split the Airbnb equally,", keywords: ["equal"]}
+- {id: rag-5, query: "What time is the Goa flight?", expected_source: "message:Flight is at 6am on Friday, be ", keywords: ["6"]}
+- {id: rag-6, query: "Who is paying the wifi bill?", expected_source: "message:Wifi bill is due on the 5th, I", keywords: ["Amit"]}
+- {id: rag-7, query: "the cab ride to the airport", expected_source: "expense:Uber to airport", keywords: ["450"]}
+- {id: rag-8, query: "concert", expected_source: "expense:Concert tickets", keywords: ["1800", "1,800"]}
+- {id: rag-9, query: "medicine purchase", expected_source: "expense:Medicines", keywords: ["2500", "2,500"]}
+- {id: rag-10, query: "Zoya Maldives trip", expected_source: null, must_not_retrieve: "expense:stranger", keywords: []}

@@ -93,7 +93,11 @@ async def index_group_message(session: AsyncSession, llm: LLMClient, message_id:
     content = f"Group message from {author.name if author else 'someone'} on {msg.created_at:%Y-%m-%d}: {msg.message}"
     meta = {"date": f"{msg.created_at:%Y-%m-%d}", "title": f"Message from {author.name if author else 'someone'}"}
     await _replace_chunks(
-        session, llm, "group_message", message_id, [Chunk("group_message", message_id, content, group_id=msg.group_id, meta=meta)]
+        session,
+        llm,
+        "group_message",
+        message_id,
+        [Chunk("group_message", message_id, content, group_id=msg.group_id, meta=meta)],
     )
 
 
@@ -102,7 +106,9 @@ async def index_receipt(session: AsyncSession, llm: LLMClient, receipt_id: str) 
     if receipt is None:
         return
     items = list(
-        await session.scalars(select(ReceiptItem).where(ReceiptItem.receipt_id == receipt_id).order_by(ReceiptItem.position))
+        await session.scalars(
+            select(ReceiptItem).where(ReceiptItem.receipt_id == receipt_id).order_by(ReceiptItem.position)
+        )
     )
     header = f"Receipt from {receipt.merchant or 'unknown merchant'} dated {receipt.bill_date or 'unknown'}"
     meta = {"date": receipt.bill_date, "title": receipt.merchant or "Receipt"}
@@ -130,8 +136,17 @@ _INDEXERS = {"expense": index_expense, "group_message": index_group_message, "re
 _background: set[asyncio.Task] = set()
 
 
-def schedule_index(factory: async_sessionmaker | None, source_type: str, source_id: str) -> None:
+_factory: async_sessionmaker | None = None
+
+
+def enable_background_indexing(factory: async_sessionmaker | None) -> None:
+    global _factory
+    _factory = factory
+
+
+def schedule_index(source_type: str, source_id: str) -> None:
     """Index in the background, in its own session. Failures are logged and never affect the request."""
+    factory = _factory
     if factory is None:
         return
 
@@ -204,7 +219,9 @@ def rrf(rankings: list[list[str]], k: int = RRF_K) -> dict[str, float]:
 
 RERANK_SCHEMA = {
     "type": "object",
-    "properties": {"ranked": {"type": "array", "items": {"type": "integer"}, "description": "passage numbers, best first"}},
+    "properties": {
+        "ranked": {"type": "array", "items": {"type": "integer"}, "description": "passage numbers, best first"}
+    },
     "required": ["ranked"],
 }
 
@@ -246,7 +263,9 @@ async def search(
     top_ids = sorted(scores, key=scores.get, reverse=True)[: k * 2]
     docs = {d.id: d for d in await session.scalars(select(Document).where(Document.id.in_(top_ids)))}
     hits = [
-        Hit(d.id, d.source_type, d.source_id, d.content, d.meta or {}, scores[d.id]) for i in top_ids if (d := docs.get(i))
+        Hit(d.id, d.source_type, d.source_id, d.content, d.meta or {}, scores[d.id])
+        for i in top_ids
+        if (d := docs.get(i))
     ]
     if (settings.rag_rerank if rerank is None else rerank) and len(hits) > 2:
         hits = await _rerank(llm, query, hits)

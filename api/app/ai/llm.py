@@ -205,7 +205,6 @@ class LiteLLMClient:
                 errors.append(f"{model}: {type(exc).__name__}: {exc}")
         raise LLMError(" | ".join(errors))
 
-
     async def embed(self, texts):
         import litellm
 

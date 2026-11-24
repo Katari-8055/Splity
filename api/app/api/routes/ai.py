@@ -5,7 +5,7 @@ import time
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -13,13 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.ai import ops, store, tracing
 from app.ai.agent import run_turn
 from app.ai.categorize import categorize
-from app.ai.llm import get_llm
+from app.ai.guardrails import clean_user_input
+from app.ai.llm import LLMError, get_llm
 from app.ai.tools import ToolContext
 from app.ai.tracing import TraceData
+from app.ai.voice import sniff_audio, transcribe
 from app.api.deps import CurrentUser, SessionDep
 from app.api.schemas import CamelModel
 from app.core.config import get_settings
-from app.core.errors import Forbidden, TooManyRequests
+from app.core.errors import BadRequest, Forbidden, TooManyRequests
 from app.core.rate_limit import SlidingWindowLimiter
 from app.db.models import User
 from app.db.session import get_session_factory
@@ -189,3 +191,37 @@ async def ops_trace(trace_id: str, _: AdminUser, session: SessionDep):
 async def ops_access(user: CurrentUser):
     """Lets the UI decide whether to show the AI Ops link."""
     return {"isAdmin": user.email in {e.lower() for e in get_settings().admin_emails}}
+
+
+# ── voice ────────────────────────────────────────────────────────────────────
+
+
+@router.post("/transcribe")
+async def transcribe_audio(user: CurrentUser, audio: UploadFile = File(...)):
+    """Voice note → text. The client puts the text in the input box for the user to check before sending."""
+    enforce_ai_limit(user)
+    data = await audio.read(get_settings().max_audio_bytes + 1)
+    if len(data) > get_settings().max_audio_bytes:
+        raise BadRequest("Voice note is too long")
+    mime = sniff_audio(data)
+    if mime is None:
+        raise BadRequest("Unsupported audio format (use webm, ogg, wav, mp3 or m4a)")
+    try:
+        result = await transcribe(get_llm(), data, mime)
+    except LLMError as exc:
+        raise BadRequest("Couldn't understand the voice note. Please try again or type instead.") from exc
+    return {"text": clean_user_input(result.text), "language": result.language}
+
+
+# ── RAG maintenance (admins) ─────────────────────────────────────────────────
+
+
+@router.post("/ops/reindex")
+async def reindex(_: AdminUser, session: SessionDep):
+    """Rebuild search chunks and embeddings for all expenses, messages and receipts, and seed SQL examples."""
+    from app.ai.rag import reindex_all
+    from app.ai.sql_agent import seed_examples
+
+    counts = await reindex_all(session, get_llm())
+    counts["sql_examples"] = await seed_examples(session, get_llm())
+    return counts

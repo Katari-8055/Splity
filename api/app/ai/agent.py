@@ -22,6 +22,7 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 
 from app.ai import store, tracing
+from app.ai.guardrails import UNTRUSTED_TOOLS, clean_user_input, guard_output, wrap_tool_result
 from app.ai.llm import Completion, LLMClient, LLMError, TextDelta
 from app.ai.prompts import PROMPT_VERSION, build_system_prompt
 from app.ai.tools import TOOLS, ToolContext, ToolError, openai_tools, prepare_write, run_read
@@ -41,6 +42,7 @@ class AgentState(TypedDict):
     pending: dict | None
     tool_log: Annotated[list[dict], operator.add]
     usage: Annotated[list[dict], operator.add]
+    tainted: bool  # untrusted content (receipts, messages, other people's text) has entered the context
 
 
 @dataclass
@@ -98,6 +100,7 @@ async def tools_node(state: AgentState, config: RunnableConfig) -> dict:
     deps = _deps(config)
     write = get_stream_writer()
     pending = state.get("pending")
+    tainted = bool(state.get("tainted"))
     replies, log = [], []
 
     for call in state["messages"][-1].get("tool_calls", []):
@@ -108,6 +111,7 @@ async def tools_node(state: AgentState, config: RunnableConfig) -> dict:
         write({"type": "tool_start", "name": name})
         started = time.perf_counter()
         ok = True
+        detail: dict = {}
         try:
             if mutates and pending:
                 payload = {"error": "Only one change can be proposed at a time. Ask the user to confirm the first."}
@@ -123,6 +127,8 @@ async def tools_node(state: AgentState, config: RunnableConfig) -> dict:
                     "summary": prepared.summary,
                     "preview": prepared.preview,
                     "expiresAt": action.expires_at.isoformat(),
+                    # Proposed after reading untrusted content: the UI shows an extra warning.
+                    "tainted": tainted,
                 }
                 payload = {
                     "status": "awaiting_user_confirmation",
@@ -131,16 +137,25 @@ async def tools_node(state: AgentState, config: RunnableConfig) -> dict:
                 }
             else:
                 payload = await run_read(deps.ctx, name, raw)
+                detail = {"sql": payload["sql"]} if isinstance(payload, dict) and "sql" in payload else {}
+                if name in UNTRUSTED_TOOLS:
+                    tainted = True
+                payload, suspicious = wrap_tool_result(name, payload)
+                if suspicious:
+                    log.append(
+                        {"kind": "guardrail", "t": time.perf_counter(), "name": "injection_detected", "tool": name}
+                    )
+                    write({"type": "guardrail", "name": "injection_detected", "tool": name})
         except ToolError as exc:
             payload, ok = {"error": str(exc)}, False
         elapsed = int((time.perf_counter() - started) * 1000)
-        write({"type": "tool_end", "name": name, "ok": ok})
+        write({"type": "tool_end", "name": name, "ok": ok, **(detail if ok else {})})
         replies.append(_tool_message(call["id"], payload))
         log.append(
             {"kind": "tool", "t": started, "name": name, "ok": ok, "mutates": mutates, "ms": elapsed, "args": raw}
         )
 
-    return {"messages": replies, "pending": pending, "tool_log": log}
+    return {"messages": replies, "pending": pending, "tool_log": log, "tainted": tainted}
 
 
 async def give_up_node(state: AgentState) -> dict:
@@ -179,6 +194,11 @@ async def system_prompt_for(ctx: ToolContext) -> str:
     )
 
 
+async def _known_emails(ctx: ToolContext) -> set[str]:
+    friends = await friends_service.list_friends(ctx.session, ctx.user.id)
+    return {ctx.user.email.lower(), *(f.email.lower() for f in friends)}
+
+
 async def run_turn(
     ctx: ToolContext, llm: LLMClient, user_message: str, conversation_id: str | None
 ) -> AsyncIterator[dict]:
@@ -187,8 +207,16 @@ async def run_turn(
     yield {"type": "conversation", "conversationId": conversation.id}
 
     history = await store.load_history(ctx.session, conversation.id)
+    user_message = clean_user_input(user_message)
     user_msg = {"role": "user", "content": user_message}
-    initial: AgentState = {"messages": [*history, user_msg], "steps": 0, "pending": None, "tool_log": [], "usage": []}
+    initial: AgentState = {
+        "messages": [*history, user_msg],
+        "steps": 0,
+        "pending": None,
+        "tool_log": [],
+        "usage": [],
+        "tainted": False,
+    }
     deps = AgentDeps(ctx=ctx, llm=llm, system_prompt=await system_prompt_for(ctx), conversation_id=conversation.id)
     config: RunnableConfig = {"configurable": {"deps": deps}, "recursion_limit": 4 * deps.max_steps + 5}
 
@@ -235,6 +263,9 @@ async def run_turn(
     answer = next((m["content"] for m in reversed(new_messages) if m["role"] == "assistant" and m.get("content")), "")
     if not answer:
         answer = "Please review the details below and confirm." if final["pending"] else "Done."
+    answer, findings = guard_output(answer, await _known_emails(ctx))
+    for finding in findings:
+        final["tool_log"].append({"kind": "guardrail", "t": time.perf_counter(), "name": finding})
     status = "proposed" if final["pending"] else "gave_up" if answer == GIVE_UP_MESSAGE else "ok"
     record = trace(status, answer)
     trace_id = await tracing.record(ctx.session, record)

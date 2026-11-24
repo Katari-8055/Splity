@@ -3,6 +3,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai import rag
 from app.core.errors import BadRequest, NotFound
 from app.db.models import Expense, Group, GroupMember, GroupMessage, User
 from app.services.friends import friend_ids
@@ -133,6 +134,7 @@ async def post_message(session: AsyncSession, group_id: str, user: User, text: s
     session.add(message)
     await session.commit()
     await session.refresh(message)
+    rag.schedule_index("group_message", message.id)
     return _message_dict(message, user.name)
 
 

@@ -89,9 +89,7 @@ def check_arithmetic(r: ParsedReceipt) -> list[str]:
     items_sum = sum((i.amount for i in r.items), Decimal(0))
     expected = items_sum + (r.tax or 0) + (r.tip or 0) - (r.discount or 0)
     if abs(expected - r.total) > TOLERANCE:
-        issues.append(
-            f"Items + tax + tip - discount = {expected:.2f}, but the printed total is {r.total:.2f}"
-        )
+        issues.append(f"Items + tax + tip - discount = {expected:.2f}, but the printed total is {r.total:.2f}")
     if any(i.amount < 0 for i in r.items):
         issues.append("Some items have negative amounts")
     return issues

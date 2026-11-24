@@ -91,6 +91,22 @@ async def main() -> None:
         await groups.post_message(session, goa.id, me, "Let's split the Airbnb equally, scooters by usage.")
 
     print("Seeded. Log in as demo@splity.app /", PASSWORD)
+    await build_search_index()
+
+
+async def build_search_index() -> None:
+    """Embed expenses and messages for RAG and store the SQL few-shot examples (needs GEMINI_API_KEY)."""
+    from app.ai.llm import LLMError, get_llm
+    from app.ai.rag import reindex_all
+    from app.ai.sql_agent import seed_examples
+
+    try:
+        async with get_sessionmaker()() as session:
+            counts = await reindex_all(session, get_llm())
+            counts["sql_examples"] = await seed_examples(session, get_llm())
+        print("Search index built:", counts)
+    except LLMError as exc:
+        print("Skipped the search index (no working embedding model):", exc)
 
 
 if __name__ == "__main__":

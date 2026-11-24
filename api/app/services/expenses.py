@@ -6,6 +6,7 @@ from typing import Literal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai import rag
 from app.core.errors import BadRequest, NotFound
 from app.db.models import Expense, ExpenseSplit, User
 from app.services import groups as groups_service
@@ -105,6 +106,7 @@ async def create_expense(session: AsyncSession, payer: User, data: ExpenseInput)
             )
     await session.commit()
     await session.refresh(expense)
+    rag.schedule_index("expense", expense.id)
 
     return {
         "expense": expense_row(expense, payer.name),

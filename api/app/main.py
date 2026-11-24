@@ -3,10 +3,12 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.ai.rag import enable_background_indexing
 from app.ai.tracing import configure_langfuse
-from app.api.routes import ai, analytics, auth, expenses, friends, groups, notifications, users
+from app.api.routes import ai, analytics, auth, expenses, friends, groups, notifications, receipts, users
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
+from app.db.session import get_sessionmaker
 
 
 def create_app() -> FastAPI:
@@ -18,6 +20,7 @@ def create_app() -> FastAPI:
 
     litellm.suppress_debug_info = True
     configure_langfuse()
+    enable_background_indexing(get_sessionmaker())
 
     app = FastAPI(title=settings.app_name, version="0.1.0")
     app.add_middleware(
@@ -33,7 +36,7 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "ok"}
 
-    for module in (auth, users, friends, groups, expenses, notifications, analytics, ai):
+    for module in (auth, users, friends, groups, expenses, notifications, analytics, ai, receipts):
         app.include_router(module.router, prefix="/api")
     return app
 

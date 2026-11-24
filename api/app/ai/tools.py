@@ -630,3 +630,7 @@ def openai_tools(names: list[str] | None = None) -> list[dict]:
         }
         for t in selected
     ]
+
+
+# AI-backed tools (text-to-SQL, RAG, receipts) register themselves into TOOLS.
+from app.ai import tools_ai  # noqa: E402,F401
